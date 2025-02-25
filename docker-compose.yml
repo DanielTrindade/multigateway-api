@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: multigateway-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: multigateway-db
+      MYSQL_USER: multigateway
+      MYSQL_PASSWORD: multigateway_password
+      MYSQL_ROOT_PASSWORD: root_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - multigateway-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Laravel Application
+  app:
+    build:
+      context: ./multigateway-app
+      dockerfile: ../Dockerfile.app
+    container_name: multigateway-app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./multigateway-app:/var/www/html
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    networks:
+      - multigateway-network
+    environment:
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: multigateway-db
+      DB_USERNAME: multigateway
+      DB_PASSWORD: multigateway_password
+      GATEWAY1_URL: http://gateway1:3001
+      GATEWAY2_URL: http://gateway2:3002
+
+  # Nginx Web Server
+  nginx:
+    image: nginx:alpine
+    container_name: multigateway-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./multigateway-app:/var/www/html
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d
+    depends_on:
+      - app
+    networks:
+      - multigateway-network
+
+  # Gateway 1 Mock
+  gateway1:
+    image: matheusprotzen/gateways-mock
+    container_name: multigateway-gateway1
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    networks:
+      - multigateway-network
+
+  # Gateway 2 Mock
+  gateway2:
+    image: matheusprotzen/gateways-mock
+    container_name: multigateway-gateway2
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    networks:
+      - multigateway-network
+
+# Networks
+networks:
+  multigateway-network:
+    driver: bridge
+
+# Volumes
+volumes:
+  mysql_data:
+    driver: local
