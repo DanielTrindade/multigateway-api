@@ -2,7 +2,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Models\Product;
-use Illuminate\Http\Client\Request;
+use Illuminate\Http\Request;
 use App\Http\Controllers\Controller as Controller;
 
 class ProductController extends Controller

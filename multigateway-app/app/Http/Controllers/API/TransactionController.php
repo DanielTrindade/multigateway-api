@@ -4,15 +4,15 @@ namespace App\Http\Controllers\API;
 use App\Models\Client;
 use App\Models\Product;
 use App\Models\Transaction;
-use App\Services\Payment\PaymentService as PaymentPaymentService;
-use Illuminate\Http\Client\Request;
-use App\Http\Controllers\Controller as Controller;
+use App\Services\Payment\PaymentService;
+use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
 
 class TransactionController extends Controller
 {
     protected $paymentService;
 
-    public function __construct(PaymentPaymentService $paymentService)
+    public function __construct(PaymentService $paymentService)
     {
         $this->paymentService = $paymentService;
     }

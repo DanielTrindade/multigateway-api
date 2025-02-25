@@ -4,8 +4,8 @@ namespace App\Http\Controllers\API;
 
 use App\Models\Role;
 use App\Models\User;
-use Illuminate\Http\Client\Request;
-use App\Http\Controllers\Controller as Controller;
+use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
@@ -81,7 +81,7 @@ class UserController extends Controller
     {
         $this->authorize('manage-users');
 
-        if ($user->id === User::id()) {
+        if ($user->id === auth()->id) {
             return response()->json([
                 'message' => 'Você não pode excluir seu próprio usuário'
             ], 422);

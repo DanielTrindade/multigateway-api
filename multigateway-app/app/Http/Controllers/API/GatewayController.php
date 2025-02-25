@@ -2,7 +2,7 @@
 namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller as Controller;
 use App\Models\Gateway;
-use Illuminate\Http\Client\Request;
+use Illuminate\Http\Request;
 
 class GatewayController extends Controller
 {
