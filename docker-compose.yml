@@ -6,11 +6,13 @@ services:
     image: mysql:8.0
     container_name: multigateway-db
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      MYSQL_DATABASE: multigateway-db
-      MYSQL_USER: multigateway
-      MYSQL_PASSWORD: multigateway_password
-      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     ports:
       - "3306:3306"
     volumes:
@@ -18,7 +20,7 @@ services:
     networks:
       - multigateway-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -39,15 +41,8 @@ services:
       - db
     networks:
       - multigateway-network
-    environment:
-      DB_CONNECTION: mysql
-      DB_HOST: db
-      DB_PORT: 3306
-      DB_DATABASE: multigateway-db
-      DB_USERNAME: multigateway
-      DB_PASSWORD: multigateway_password
-      GATEWAY1_URL: http://gateway1:3001
-      GATEWAY2_URL: http://gateway2:3002
+    env_file:
+      - .env
 
   # Nginx Web Server
   nginx:
