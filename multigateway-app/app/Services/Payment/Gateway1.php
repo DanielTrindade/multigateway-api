@@ -1,8 +1,10 @@
 <?php
+
 namespace App\Services\Payment;
 
 use App\Services\Payment\PaymentGatewayInterface as PaymentPaymentGatewayInterface;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class Gateway1 implements PaymentPaymentGatewayInterface
 {
@@ -49,10 +51,34 @@ class Gateway1 implements PaymentPaymentGatewayInterface
 
     public function refund(string $transactionId): array
     {
-        $response = Http::withToken($this->bearerToken)
-            ->post("{$this->apiUrl}/transactions/{$transactionId}/charge_back");
+        // Autenticar se não tiver token
+        if (empty($this->bearerToken)) {
+            if (!$this->authenticate()) {
+                throw new \Exception("Não foi possível autenticar no Gateway 1");
+            }
+        }
 
-        return $response->json();
+        try {
+            $response = Http::withToken($this->bearerToken)
+                ->post("{$this->apiUrl}/transactions/{$transactionId}/charge_back");
+
+            // Se receber erro de autenticação, tenta renovar o token e repetir
+            if ($response->status() === 401) {
+                Log::info("Token expirado no Gateway 1, renovando...");
+                if (!$this->authenticate()) {
+                    throw new \Exception("Falha ao renovar token no Gateway 1");
+                }
+
+                // Tentar novamente com o novo token
+                $response = Http::withToken($this->bearerToken)
+                    ->post("{$this->apiUrl}/transactions/{$transactionId}/charge_back");
+            }
+
+            return $response->json();
+        } catch (\Exception $e) {
+            Log::error("Erro no reembolso Gateway 1: " . $e->getMessage());
+            throw $e;
+        }
     }
 
     public function getTransactions(): array
@@ -63,4 +89,3 @@ class Gateway1 implements PaymentPaymentGatewayInterface
         return $response->json();
     }
 }
-

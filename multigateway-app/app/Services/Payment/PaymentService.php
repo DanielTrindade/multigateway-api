@@ -30,35 +30,59 @@ class PaymentService
      */
     protected function loadGateways()
     {
-        // Carregar todos os gateways ativos em ordem de prioridade
-        $dbGateways = Gateway::where('is_active', true)
-                            ->orderBy('priority')
-                            ->get();
+        try {
+            // Carregar todos os gateways ativos em ordem de prioridade
+            $dbGateways = Gateway::where('is_active', true)
+                ->orderBy('priority')
+                ->get();
 
-        foreach ($dbGateways as $gateway) {
-            $gatewayClass = $this->getGatewayClass($gateway);
+            Log::info("Carregando gateways. Encontrados: " . $dbGateways->count());
 
-            if (class_exists($gatewayClass)) {
+            foreach ($dbGateways as $gateway) {
                 try {
+                    // Determinar qual classe de gateway usar baseado no nome
+                    if (strpos(strtolower($gateway->name), 'gateway 1') !== false) {
+                        $gatewayInstance = $this->createGateway1($gateway);
+                    } else if (strpos(strtolower($gateway->name), 'gateway 2') !== false) {
+                        $gatewayInstance = $this->createGateway2($gateway);
+                    } else {
+                        Log::warning("Gateway não reconhecido: " . $gateway->name);
+                        continue;
+                    }
+
                     $this->gateways[] = [
                         'id' => $gateway->id,
-                        'instance' => App::make($gatewayClass),
+                        'instance' => $gatewayInstance,
                     ];
+
+                    Log::info("Gateway carregado com sucesso: " . $gateway->name);
                 } catch (\Exception $e) {
-                    Log::error("Falha ao instanciar gateway: {$e->getMessage()}");
+                    Log::error("Erro ao carregar gateway {$gateway->name}: " . $e->getMessage());
                 }
-            } else {
-                Log::warning("Classe do gateway não encontrada: {$gatewayClass}");
             }
+        } catch (\Exception $e) {
+            Log::error("Erro ao carregar gateways: " . $e->getMessage());
         }
     }
 
-    /**
-     * Determina o nome da classe do gateway
-     */
-    protected function getGatewayClass(Gateway $gateway)
+    protected function createGateway1($gateway)
     {
-        return "App\\Services\\Payment\\Gateway{$gateway->id}";
+        $credentials = $gateway->credentials;
+        return new Gateway1(
+            config('services.gateway1.url'),
+            $credentials['email'] ?? config('services.gateway1.email'),
+            $credentials['token'] ?? config('services.gateway1.token')
+        );
+    }
+
+    protected function createGateway2($gateway)
+    {
+        $credentials = $gateway->credentials;
+        return new Gateway2(
+            config('services.gateway2.url'),
+            $credentials['auth_token'] ?? config('services.gateway2.auth_token'),
+            $credentials['auth_secret'] ?? config('services.gateway2.auth_secret')
+        );
     }
 
     /**
@@ -110,13 +134,45 @@ class PaymentService
     public function refundPayment(Transaction $transaction)
     {
         $gatewayId = $transaction->gateway_id;
-        $gatewayClass = "App\\Services\\Payment\\Gateway{$gatewayId}";
 
-        if (!class_exists($gatewayClass)) {
-            throw new \Exception("Gateway não encontrado para reembolso");
+        // Encontrar o gateway que processou a transação
+        $gatewayInstance = null;
+        foreach ($this->gateways as $gateway) {
+            if ($gateway['id'] == $gatewayId) {
+                $gatewayInstance = $gateway['instance'];
+                break;
+            }
         }
 
-        $gateway = App::make($gatewayClass);
-        return $gateway->refund($transaction->external_id);
+        if (!$gatewayInstance) {
+            // Se não encontrou o gateway nos já carregados, tenta buscar diretamente
+            try {
+                $dbGateway = Gateway::find($gatewayId);
+                if (!$dbGateway) {
+                    throw new \Exception("Gateway ID {$gatewayId} não encontrado no banco de dados");
+                }
+
+                if (strpos(strtolower($dbGateway->name), 'gateway 1') !== false) {
+                    $gatewayInstance = $this->createGateway1($dbGateway);
+                } else if (strpos(strtolower($dbGateway->name), 'gateway 2') !== false) {
+                    $gatewayInstance = $this->createGateway2($dbGateway);
+                } else {
+                    throw new \Exception("Tipo de gateway não reconhecido: {$dbGateway->name}");
+                }
+            } catch (\Exception $e) {
+                Log::error("Erro ao carregar gateway para reembolso: " . $e->getMessage());
+                throw new \Exception("Gateway não encontrado para reembolso: " . $e->getMessage());
+            }
+        }
+
+        try {
+            Log::info("Iniciando reembolso da transação {$transaction->id} via gateway {$gatewayId}");
+            $result = $gatewayInstance->refund($transaction->external_id);
+            Log::info("Reembolso da transação {$transaction->id} processado com sucesso");
+            return $result;
+        } catch (\Exception $e) {
+            Log::error("Erro ao processar reembolso da transação {$transaction->id}: " . $e->getMessage());
+            throw $e;
+        }
     }
 }
