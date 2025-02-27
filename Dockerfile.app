@@ -1,4 +1,4 @@
-FROM php:8.4-fpm
+FROM php:8.2-fpm
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -23,13 +23,16 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www/html
 
-# Install dependencies
-RUN composer install --no-interaction --optimize-autoloader || echo "No composer.json found or error in dependencies. Will try again later."
+# Copy entire application - simplifying to ensure dependencies are installed
+COPY . .
+
+# Install dependencies with verbose output to debug
+RUN composer install --no-interaction --no-progress --verbose
 
 # Give permissions to storage and bootstrap/cache
-RUN mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cache || echo "Directories might already exist"
-RUN chmod -R 775 storage bootstrap/cache || echo "Permissions might not be set correctly"
-RUN chown -R www-data:www-data storage bootstrap/cache || echo "Ownership might not be set correctly"
+RUN mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cache
+RUN chmod -R 775 storage bootstrap/cache
+RUN chown -R www-data:www-data storage bootstrap/cache .
 
 # Expose port 8000 and start server
 EXPOSE 8000
