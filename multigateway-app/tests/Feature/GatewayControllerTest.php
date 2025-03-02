@@ -10,128 +10,131 @@ use Tests\TestCase;
 
 class GatewayControllerTest extends TestCase
 {
-  use DatabaseTransactions;
+    use DatabaseTransactions;
 
-  protected $adminUser;
-  protected $regularUser;
-  protected $gateway1;
-  protected $gateway2;
+    protected $adminUser;
+    protected $regularUser;
+    protected $gateway1;
+    protected $gateway2;
 
-  protected function setUp(): void
-  {
-    parent::setUp();
+    protected function setUp(): void
+    {
+        parent::setUp();
 
-    // Usar usuários do seed
-    $this->adminUser = User::where('email', 'admin@example.com')->first();
-    $this->regularUser = User::where('email', 'user@example.com')->first();
+        // Usar usuários do seed
+        $this->adminUser = User::where('email', 'admin@example.com')->first();
+        $this->regularUser = User::where('email', 'user@example.com')->first();
 
-    // Usar gateways do seed
-    $this->gateway1 = Gateway::where('name', 'Gateway 1')->first();
-    $this->gateway2 = Gateway::where('name', 'Gateway 2')->first();
-  }
+        // Usar gateways do seed
+        $this->gateway1 = Gateway::where('name', 'Gateway 1')->first();
+        $this->gateway2 = Gateway::where('name', 'Gateway 2')->first();
+    }
 
-  #[Test]
-  public function it_lists_gateways_in_priority_order()
-  {
-    $response = $this->actingAs($this->adminUser)
-      ->getJson('/api/gateways');
+    #[Test]
+    public function it_lists_gateways_in_priority_order()
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->getJson('/api/gateways');
 
-    $response->assertStatus(200)
-      ->assertJsonCount(2)
-      ->assertJson([
-        [
-          'name' => 'Gateway 1',
-          'priority' => 1
-        ],
-        [
-          'name' => 'Gateway 2',
-          'priority' => 2
-        ]
-      ]);
-  }
+        $response->assertStatus(200)
+            ->assertJsonStructure([
+                'data',
+                'links',
+                'meta'
+            ]);
 
-  #[Test]
-  public function admin_can_toggle_gateway_status()
-  {
-    // Salvar o status original para restaurar depois
-    $originalStatus = $this->gateway1->is_active;
+        // Verificar que os gateways estão na ordem correta dentro de 'data'
+        $this->assertEquals('Gateway 1', $response->json('data.0.name'));
+        $this->assertEquals('Gateway 2', $response->json('data.1.name'));
+        $this->assertEquals(1, $response->json('data.0.priority'));
+        $this->assertEquals(2, $response->json('data.1.priority'));
+    }
 
-    $response = $this->actingAs($this->adminUser)
-      ->patchJson("/api/gateways/{$this->gateway1->id}/toggle");
+    public function admin_can_toggle_gateway_status()
+    {
+        // Salvar o status original para restaurar depois
+        $originalStatus = $this->gateway1->is_active;
 
-    $response->assertStatus(200)
-      ->assertJson([
-        'is_active' => !$originalStatus
-      ]);
+        $response = $this->actingAs($this->adminUser)
+            ->patchJson("/api/gateways/{$this->gateway1->id}/toggle");
 
-    $this->assertDatabaseHas('gateways', [
-      'id' => $this->gateway1->id,
-      'is_active' => !$originalStatus
-    ]);
+        $response->assertStatus(200)
+            ->assertJson([
+                'data' => [
+                    'is_active' => !$originalStatus
+                ]
+            ]);
 
-    // Restaurar ao status original após o teste
-    $this->gateway1->is_active = $originalStatus;
-    $this->gateway1->save();
-  }
+        $this->assertDatabaseHas('gateways', [
+            'id' => $this->gateway1->id,
+            'is_active' => !$originalStatus
+        ]);
 
-  #[Test]
-  public function regular_user_cannot_toggle_gateway_status()
-  {
-    $originalStatus = $this->gateway1->is_active;
+        // Restaurar ao status original após o teste
+        $this->gateway1->is_active = $originalStatus;
+        $this->gateway1->save();
+    }
 
-    $response = $this->actingAs($this->regularUser)
-      ->patchJson("/api/gateways/{$this->gateway1->id}/toggle");
+    #[Test]
+    public function regular_user_cannot_toggle_gateway_status()
+    {
+        $originalStatus = $this->gateway1->is_active;
 
-    $response->assertStatus(403); // Forbidden
+        $response = $this->actingAs($this->regularUser)
+            ->patchJson("/api/gateways/{$this->gateway1->id}/toggle");
 
-    $this->assertDatabaseHas('gateways', [
-      'id' => $this->gateway1->id,
-      'is_active' => $originalStatus
-    ]);
-  }
+        $response->assertStatus(403); // Forbidden
 
-  #[Test]
-  public function admin_can_update_gateway_priority()
-  {
-    $originalPriority = $this->gateway1->priority;
-    $newPriority = 10;
+        $this->assertDatabaseHas('gateways', [
+            'id' => $this->gateway1->id,
+            'is_active' => $originalStatus
+        ]);
+    }
 
-    $response = $this->actingAs($this->adminUser)
-      ->patchJson("/api/gateways/{$this->gateway1->id}/priority", [
-        'priority' => $newPriority
-      ]);
+    #[Test]
+    public function admin_can_update_gateway_priority()
+    {
+        $originalPriority = $this->gateway1->priority;
+        $newPriority = 10;
 
-    $response->assertStatus(200)
-      ->assertJson([
-        'priority' => $newPriority
-      ]);
+        $response = $this->actingAs($this->adminUser)
+            ->patchJson("/api/gateways/{$this->gateway1->id}/priority", [
+                'priority' => $newPriority
+            ]);
 
-    $this->assertDatabaseHas('gateways', [
-      'id' => $this->gateway1->id,
-      'priority' => $newPriority
-    ]);
+        $response->assertStatus(200)
+            ->assertJson([
+                'data' => [
+                    'priority' => $newPriority
+                ]
+            ]);
 
-    // Restaurar a prioridade original após o teste
-    $this->gateway1->priority = $originalPriority;
-    $this->gateway1->save();
-  }
+        $this->assertDatabaseHas('gateways', [
+            'id' => $this->gateway1->id,
+            'priority' => $newPriority
+        ]);
 
-  #[Test]
-  public function regular_user_cannot_update_gateway_priority()
-  {
-    $originalPriority = $this->gateway1->priority;
-    $newPriority = 99;
+        // Restaurar a prioridade original após o teste
+        $this->gateway1->priority = $originalPriority;
+        $this->gateway1->save();
+    }
 
-    $response = $this->actingAs($this->regularUser)
-      ->patchJson("/api/gateways/{$this->gateway1->id}/priority", [
-        'priority' => $newPriority
-      ]);
+    #[Test]
+    public function regular_user_cannot_update_gateway_priority()
+    {
+        $originalPriority = $this->gateway1->priority;
+        $newPriority = 99;
 
-    $response->assertStatus(403); // Forbidden
+        $response = $this->actingAs($this->regularUser)
+            ->patchJson("/api/gateways/{$this->gateway1->id}/priority", [
+                'priority' => $newPriority
+            ]);
 
-    $this->assertDatabaseHas('gateways', [
-      'id' => $this->gateway1->id,
-      'priority' => $originalPriority
-    ]);
-  }
+        $response->assertStatus(403); // Forbidden
+
+        $this->assertDatabaseHas('gateways', [
+            'id' => $this->gateway1->id,
+            'priority' => $originalPriority
+        ]);
+    }
 }

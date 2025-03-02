@@ -27,10 +27,7 @@ class ProductResource extends JsonResource
                     'subtotal' => $this->amount * $this->pivot->quantity,
                     'subtotal_formatted' => 'R$ ' . number_format(($this->amount * $this->pivot->quantity) / 100, 2, ',', '.'),
                 ];
-            }),
-            'links' => [
-                'self' => route('products.show', $this->id),
-            ],
+            })
         ];
     }
 }

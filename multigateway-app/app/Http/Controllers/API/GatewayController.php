@@ -1,6 +1,9 @@
 <?php
+
 namespace App\Http\Controllers\API;
+
 use App\Http\Controllers\Controller as Controller;
+use App\Http\Resources\GatewayResource;
 use App\Models\Gateway;
 use Illuminate\Http\Request;
 
@@ -8,8 +11,8 @@ class GatewayController extends Controller
 {
     public function index()
     {
-        $gateways = Gateway::orderBy('priority')->get();
-        return response()->json($gateways);
+        $gateways = Gateway::orderBy('priority')->paginate(20);
+        return GatewayResource::collection($gateways);
     }
 
     public function store(Request $request)
@@ -25,12 +28,12 @@ class GatewayController extends Controller
 
         $gateway = Gateway::create($validatedData);
 
-        return response()->json($gateway, 201);
+        return new GatewayResource($gateway);
     }
 
     public function show(Gateway $gateway)
     {
-        return response()->json($gateway);
+        return new GatewayResource($gateway);
     }
 
     public function update(Request $request, Gateway $gateway)
@@ -46,7 +49,7 @@ class GatewayController extends Controller
 
         $gateway->update($validatedData);
 
-        return response()->json($gateway);
+        return new GatewayResource($gateway);
     }
 
     public function destroy(Gateway $gateway)
@@ -65,7 +68,7 @@ class GatewayController extends Controller
         $gateway->is_active = !$gateway->is_active;
         $gateway->save();
 
-        return response()->json($gateway);
+        return new GatewayResource($gateway);
     }
 
     public function updatePriority(Request $request, Gateway $gateway)
@@ -79,6 +82,6 @@ class GatewayController extends Controller
         $gateway->priority = $validatedData['priority'];
         $gateway->save();
 
-        return response()->json($gateway);
+        return new GatewayResource($gateway);
     }
 }

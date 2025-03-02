@@ -21,11 +21,6 @@ class GatewayResource extends JsonResource
             'priority' => $this->priority,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
-            'links' => [
-                'self' => route('gateways.show', $this->id),
-                'toggle' => route('gateways.toggle', $this->id),
-                'priority' => route('gateways.priority', $this->id),
-            ],
         ];
     }
 }

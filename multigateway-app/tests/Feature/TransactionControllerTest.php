@@ -77,7 +77,21 @@ class TransactionControllerTest extends TestCase
 
         // Verificar resposta
         $response->assertStatus(201)
-                 ->assertJsonPath('message', 'Compra realizada com sucesso');
+                 ->assertJsonPath('message', 'Compra realizada com sucesso')
+                 ->assertJsonStructure([
+                     'message',
+                     'transaction' => [
+                         'id',
+                         'external_id',
+                         'status',
+                         'amount',
+                         'amount_formatted',
+                         'card_last_numbers',
+                         'client',
+                         'products',
+                         'links'
+                     ]
+                 ]);
 
         // Verificar se a transação foi criada
         $this->assertDatabaseHas('transactions', [
@@ -131,7 +145,16 @@ class TransactionControllerTest extends TestCase
         }
 
         $response->assertStatus(200)
-                 ->assertJsonPath('message', 'Reembolso realizado com sucesso');
+                 ->assertJsonPath('message', 'Reembolso realizado com sucesso')
+                 ->assertJsonStructure([
+                     'message',
+                     'transaction' => [
+                         'id',
+                         'status',
+                         'links'
+                     ],
+                     'response'
+                 ]);
     }
 
     #[Test]
@@ -177,15 +200,20 @@ class TransactionControllerTest extends TestCase
         // Verificar resposta - deve ser sucesso
         $response->assertStatus(200)
                  ->assertJsonStructure([
-                     '*' => [
-                         'id',
-                         'client_id',
-                         'gateway_id',
-                         'external_id',
-                         'status',
-                         'amount',
-                         'card_last_numbers'
-                     ]
+                     'data' => [
+                         '*' => [
+                             'id',
+                             'client_id',
+                             'gateway_id',
+                             'external_id',
+                             'status',
+                             'amount',
+                             'card_last_numbers',
+                             'links'
+                         ]
+                     ],
+                     'links',
+                     'meta'
                  ]);
     }
 

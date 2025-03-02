@@ -10,142 +10,175 @@ use Tests\TestCase;
 
 class ProductControllerTest extends TestCase
 {
-  use DatabaseTransactions;
+    use DatabaseTransactions;
 
-  protected $adminUser;
-  protected $managerUser;
-  protected $financeUser;
-  protected $regularUser;
-  protected $existingProduct;
+    protected $adminUser;
+    protected $managerUser;
+    protected $financeUser;
+    protected $regularUser;
+    protected $existingProduct;
 
-  protected function setUp(): void
-  {
-    parent::setUp();
+    protected function setUp(): void
+    {
+        parent::setUp();
 
-    // Usar usuários existentes do seed
-    $this->adminUser = User::where('email', 'admin@example.com')->first();
-    $this->managerUser = User::where('email', 'manager@example.com')->first();
-    $this->financeUser = User::where('email', 'finance@example.com')->first();
-    $this->regularUser = User::where('email', 'user@example.com')->first();
+        // Usar usuários existentes do seed
+        $this->adminUser = User::where('email', 'admin@example.com')->first();
+        $this->managerUser = User::where('email', 'manager@example.com')->first();
+        $this->financeUser = User::where('email', 'finance@example.com')->first();
+        $this->regularUser = User::where('email', 'user@example.com')->first();
 
-    // Usar um produto existente do seed para testes
-    $this->existingProduct = Product::first();
-  }
+        // Usar um produto existente do seed para testes
+        $this->existingProduct = Product::first();
+    }
 
-  #[Test]
-  public function admin_can_create_products()
-  {
-    $productData = [
-      'name' => 'Test Product Admin',
-      'amount' => 1000, // R$ 10,00 em centavos
-    ];
+    #[Test]
+    public function admin_can_create_products()
+    {
+        $productData = [
+            'name' => 'Test Product Admin',
+            'amount' => 1000, // R$ 10,00 em centavos
+        ];
 
-    $response = $this->actingAs($this->adminUser)
-      ->postJson('/api/products', $productData);
+        $response = $this->actingAs($this->adminUser)
+            ->postJson('/api/products', $productData);
 
-    $response->assertStatus(201)
-      ->assertJson([
-        'name' => 'Test Product Admin',
-        'amount' => 1000,
-      ]);
+        $response->assertStatus(201)
+            ->assertJson([
+                'data' => [
+                    'name' => 'Test Product Admin',
+                    'amount' => 1000,
+                ]
+            ])
+            ->assertJsonStructure([
+                'data' => [
+                    'id',
+                    'name',
+                    'amount',
+                    'amount_formatted',
+                ]
+            ]);
 
-    $this->assertDatabaseHas('products', $productData);
-  }
+        $this->assertDatabaseHas('products', $productData);
+    }
 
-  #[Test]
-  public function manager_can_create_products()
-  {
-    $productData = [
-      'name' => 'Manager Product',
-      'amount' => 2000,
-    ];
+    #[Test]
+    public function manager_can_create_products()
+    {
+        $productData = [
+            'name' => 'Manager Product',
+            'amount' => 2000,
+        ];
 
-    $response = $this->actingAs($this->managerUser)
-      ->postJson('/api/products', $productData);
+        $response = $this->actingAs($this->managerUser)
+            ->postJson('/api/products', $productData);
 
-    $response->assertStatus(201);
-    $this->assertDatabaseHas('products', $productData);
-  }
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('products', $productData);
+    }
 
-  #[Test]
-  public function finance_can_create_products()
-  {
-    $productData = [
-      'name' => 'Finance Product',
-      'amount' => 3000,
-    ];
+    #[Test]
+    public function finance_can_create_products()
+    {
+        $productData = [
+            'name' => 'Finance Product',
+            'amount' => 3000,
+        ];
 
-    $response = $this->actingAs($this->financeUser)
-      ->postJson('/api/products', $productData);
+        $response = $this->actingAs($this->financeUser)
+            ->postJson('/api/products', $productData);
 
-    $response->assertStatus(201);
-    $this->assertDatabaseHas('products', $productData);
-  }
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('products', $productData);
+    }
 
-  #[Test]
-  public function regular_user_cannot_create_products()
-  {
-    $productData = [
-      'name' => 'Unauthorized Product',
-      'amount' => 4000,
-    ];
+    #[Test]
+    public function regular_user_cannot_create_products()
+    {
+        $productData = [
+            'name' => 'Unauthorized Product',
+            'amount' => 4000,
+        ];
 
-    $response = $this->actingAs($this->regularUser)
-      ->postJson('/api/products', $productData);
+        $response = $this->actingAs($this->regularUser)
+            ->postJson('/api/products', $productData);
 
-    $response->assertStatus(403); // Forbidden
-    $this->assertDatabaseMissing('products', $productData);
-  }
+        $response->assertStatus(403); // Forbidden
+        $this->assertDatabaseMissing('products', $productData);
+    }
 
-  #[Test]
-  public function any_authenticated_user_can_view_products()
-  {
-    // Os produtos já existem do seed, não precisamos criar mais
+    #[Test]
+    public function any_authenticated_user_can_view_products()
+    {
+        // Os produtos já existem do seed, não precisamos criar mais
 
-    // Testar acesso para usuário regular
-    $response = $this->actingAs($this->regularUser)
-      ->getJson('/api/products');
+        // Testar acesso para usuário regular
+        $response = $this->actingAs($this->regularUser)
+            ->getJson('/api/products');
 
-    $response->assertStatus(200);
-    // Deve haver pelo menos os 3 produtos do seed
-    $this->assertGreaterThanOrEqual(3, count($response->json()));
-  }
+        $response->assertStatus(200)
+            ->assertJsonStructure([
+                'data' => [
+                    '*' => [
+                        'id',
+                        'name',
+                        'amount',
+                        'amount_formatted'
+                    ]
+                ],
+                'links',
+                'meta'
+            ]);
 
-  #[Test]
-  public function admin_can_update_products()
-  {
-    // Criar um produto específico para atualização
-    $product = Product::create(['name' => 'Original Product', 'amount' => 1000]);
+        // Deve haver pelo menos os 3 produtos do seed
+        $this->assertGreaterThanOrEqual(3, $response->json('meta.total'));
+    }
 
-    $updateData = [
-      'name' => 'Updated Product',
-      'amount' => 1500,
-    ];
+    #[Test]
+    public function admin_can_update_products()
+    {
+        // Criar um produto específico para atualização
+        $product = Product::create(['name' => 'Original Product', 'amount' => 1000]);
 
-    $response = $this->actingAs($this->adminUser)
-      ->putJson("/api/products/{$product->id}", $updateData);
+        $updateData = [
+            'name' => 'Updated Product',
+            'amount' => 1500,
+        ];
 
-    $response->assertStatus(200)
-      ->assertJson($updateData);
+        $response = $this->actingAs($this->adminUser)
+            ->putJson("/api/products/{$product->id}", $updateData);
 
-    $this->assertDatabaseHas('products', $updateData);
-  }
+        $response->assertStatus(200)
+            ->assertJson([
+                'data' => $updateData
+            ])
+            ->assertJsonStructure([
+                'data' => [
+                    'id',
+                    'name',
+                    'amount',
+                    'amount_formatted'
+                ]
+            ]);
 
-  #[Test]
-  public function admin_can_delete_products()
-  {
-    // Criar um produto específico para exclusão
-    $product = Product::create(['name' => 'Product to Delete', 'amount' => 1000]);
+        $this->assertDatabaseHas('products', $updateData);
+    }
 
-    $response = $this->actingAs($this->adminUser)
-      ->deleteJson("/api/products/{$product->id}");
+    #[Test]
+    public function admin_can_delete_products()
+    {
+        // Criar um produto específico para exclusão
+        $product = Product::create(['name' => 'Product to Delete', 'amount' => 1000]);
 
-    $response->assertStatus(204);
+        $response = $this->actingAs($this->adminUser)
+            ->deleteJson("/api/products/{$product->id}");
 
-    // Como estamos usando soft deletes, o produto ainda existe mas com deleted_at
-    $this->assertSoftDeleted('products', ['id' => $product->id]);
+        $response->assertStatus(204);
 
-    // Verificar se não é mais acessível via consultas normais
-    $this->assertNull(Product::find($product->id));
-  }
+        // Como estamos usando soft deletes, o produto ainda existe mas com deleted_at
+        $this->assertSoftDeleted('products', ['id' => $product->id]);
+
+        // Verificar se não é mais acessível via consultas normais
+        $this->assertNull(Product::find($product->id));
+    }
 }

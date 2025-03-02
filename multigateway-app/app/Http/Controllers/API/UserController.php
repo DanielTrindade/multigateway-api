@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\UserResource;
 use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
@@ -14,8 +15,8 @@ class UserController extends Controller
     {
         $this->authorize('manage-users');
 
-        $users = User::all();
-        return response()->json($users);
+        $users = User::with('roles')->get();
+        return UserResource::collection($users);
     }
 
     public function store(Request $request)
@@ -40,14 +41,14 @@ class UserController extends Controller
         $roles = Role::whereIn('name', $validatedData['roles'])->get();
         $user->roles()->attach($roles);
 
-        return response()->json($user->load('roles'), 201);
+        return new UserResource($user->load('roles'));
     }
 
     public function show(User $user)
     {
         $this->authorize('manage-users');
 
-        return response()->json($user);
+        return new UserResource($user->load('roles'));
     }
 
     public function update(Request $request, User $user)
@@ -73,15 +74,16 @@ class UserController extends Controller
             $user->roles()->sync($roles);
         }
 
-        return response()->json($user->load('roles'));
+        return new UserResource($user->load('roles'));
     }
 
 
     public function destroy(User $user)
     {
+
         $this->authorize('manage-users');
 
-        if ($user->id === auth()->id) {
+        if ($user->id === auth()->id()) {
             return response()->json([
                 'message' => 'Você não pode excluir seu próprio usuário'
             ], 422);
@@ -100,9 +102,18 @@ class UserController extends Controller
             'role' => 'required|in:ADMIN,MANAGER,FINANCE,USER',
         ]);
 
-        $user->role = $validatedData['role'];
-        $user->save();
+        // Encontrar a role correspondente
+        $role = Role::where('name', $validatedData['role'])->first();
 
-        return response()->json($user);
+        if (!$role) {
+            return response()->json([
+                'message' => 'Role não encontrada'
+            ], 422);
+        }
+
+        // Substituir todas as roles atuais pela nova role
+        $user->roles()->sync([$role->id]);
+
+        return new UserResource($user->load('roles'));
     }
 }
