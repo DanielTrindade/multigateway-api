@@ -6,33 +6,35 @@ use App\Models\Gateway;
 use App\Services\Payment\Gateway1;
 use App\Services\Payment\Gateway2;
 use App\Services\Payment\PaymentService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Mockery;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 class PaymentServiceTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTransactions;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        // Criar gateways no banco
-        Gateway::create([
-            'id' => 1,
-            'name' => 'Gateway 1',
-            'is_active' => true,
-            'priority' => 1
-        ]);
+        // Verificar se existem gateways do seed, caso contrário, criar
+        if (Gateway::count() == 0) {
+            Gateway::create([
+                'id' => 1,
+                'name' => 'Gateway 1',
+                'is_active' => true,
+                'priority' => 1
+            ]);
 
-        Gateway::create([
-            'id' => 2,
-            'name' => 'Gateway 2',
-            'is_active' => true,
-            'priority' => 2
-        ]);
+            Gateway::create([
+                'id' => 2,
+                'name' => 'Gateway 2',
+                'is_active' => true,
+                'priority' => 2
+            ]);
+        }
     }
 
     #[Test]
@@ -130,8 +132,12 @@ class PaymentServiceTest extends TestCase
     #[Test]
     public function it_skips_inactive_gateways()
     {
-        // Desativar Gateway 1
-        Gateway::where('id', 1)->update(['is_active' => false]);
+        $gateway1 = Gateway::find(1);
+        $originalStatus = $gateway1->is_active;
+
+        // Desativar Gateway 1 temporariamente
+        $gateway1->is_active = false;
+        $gateway1->save();
 
         // Mock apenas para o Gateway2
         $mockGateway2 = Mockery::mock(Gateway2::class);
@@ -165,6 +171,10 @@ class PaymentServiceTest extends TestCase
         // Verificar resultado
         $this->assertTrue($result['success']);
         $this->assertEquals(2, $result['gateway_id']);
+
+        // Restaurar status original
+        $gateway1->is_active = $originalStatus;
+        $gateway1->save();
     }
 
     protected function tearDown(): void

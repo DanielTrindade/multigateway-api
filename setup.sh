@@ -46,9 +46,18 @@ log_success "Usando comando: $DOCKER_COMPOSE"
 
 # Verificar se o diretório da aplicação Laravel existe
 if [ ! -d "multigateway-app" ]; then
-    log_error "O diretório 'multigateway-app' não foi encontrado!"
-    log_error "Certifique-se de que seu projeto Laravel está no diretório 'multigateway-app'."
-    exit 1
+    log_info "O diretório 'multigateway-app' não foi encontrado! Criando o diretório..."
+    mkdir -p multigateway-app
+    
+    # Verificar se o Laravel está instalado no sistema
+    if command -v composer &> /dev/null; then
+        log_info "Criando um novo projeto Laravel na pasta multigateway-app..."
+        composer create-project laravel/laravel multigateway-app
+        log_success "Projeto Laravel criado com sucesso!"
+    else
+        log_warning "Composer não encontrado no sistema. O diretório multigateway-app foi criado, mas você precisará instalar o Laravel manualmente."
+        log_info "Recomendação: instale o Composer e execute 'composer create-project laravel/laravel multigateway-app' na raiz do projeto."
+    fi
 fi
 
 # Configurar arquivo .env na raiz
@@ -60,8 +69,25 @@ if [ ! -f ".env" ]; then
         cp .env.example .env
         log_success "Arquivo .env criado com sucesso."
     else
-        log_error "Arquivo .env.example não encontrado na raiz do projeto."
-        exit 1
+        log_warning "Arquivo .env.example não encontrado na raiz do projeto. Criando .env básico..."
+        cat > .env << EOL
+DB_CONNECTION=mysql
+DB_HOST=db
+DB_PORT=3306
+
+MYSQL_DATABASE=multigateway-db
+MYSQL_USER=multigateway
+MYSQL_PASSWORD=multigateway_password
+MYSQL_ROOT_PASSWORD=root_password
+
+GATEWAY1_URL=http://gateway1:3001
+GATEWAY2_URL=http://gateway2:3002
+GATEWAY1_EMAIL=dev@betalent.tech
+GATEWAY1_TOKEN=FEC9BB078BF338F464F96B48089EB498
+GATEWAY2_AUTH_TOKEN=tk_f2198cc671b5289fa856
+GATEWAY2_AUTH_SECRET=3d15e8ed6131446ea7e3456728b1211f
+EOL
+        log_success "Arquivo .env básico criado com sucesso."
     fi
 else
     log_info "Arquivo .env já existe na raiz do projeto."
@@ -162,120 +188,135 @@ EOL
     log_success "Configuração do Nginx criada com sucesso."
 fi
 
-# Build and start the Docker containers
-log_info "Construindo e iniciando os contêineres Docker..."
-$DOCKER_COMPOSE down
-
-# Verifica se a pasta vendor existe na aplicação Laravel
-if [ ! -d "multigateway-app/vendor" ]; then
-    log_warning "Pasta vendor não encontrada. Verificando se o composer.json existe..."
-    
-    if [ -f "multigateway-app/composer.json" ]; then
-        log_info "Instalando dependências localmente para garantir compatibilidade..."
-        
-        # Verificar se o Composer está instalado
-        if command -v composer &> /dev/null; then
-            (cd multigateway-app && composer install --no-interaction)
-            log_success "Dependências instaladas localmente com sucesso!"
-        else
-            log_warning "Composer não encontrado localmente. Continuando com a instalação no container..."
-        fi
-    fi
+# Verifica se já há contêineres rodando e os para se necessário
+log_info "Verificando contêineres existentes..."
+if $DOCKER_COMPOSE ps -q | grep -q "."; then
+    log_warning "Contêineres existentes encontrados. Parando-os antes de continuar..."
+    $DOCKER_COMPOSE down
+    log_success "Contêineres parados com sucesso."
 fi
 
-# Inicia o build dos containers
-log_info "Iniciando build dos containers Docker..."
-$DOCKER_COMPOSE build --no-cache
+# Opções de limpeza para o ambiente
+echo -e "\e[1;33m====================================="
+echo "      OPÇÕES DE LIMPEZA"
+echo "=====================================\e[0m"
+echo "Escolha uma opção:"
+echo "1. Manter todos os dados (recomendado para continuar desenvolvimento)"
+echo "2. Limpar apenas dados do banco de dados (mantém volumes Docker)"
+echo "3. Limpar todos os volumes Docker (ambiente totalmente novo)"
+echo -n "Digite o número da opção (1-3) [1]: "
+read -r clean_option
 
-# Inicia os containers
-log_info "Iniciando containers Docker..."
+# Valor padrão se nada for digitado
+clean_option=${clean_option:-1}
+
+case $clean_option in
+    1)
+        log_info "Mantendo todos os dados existentes."
+        FRESH_MIGRATE="no"
+        ;;
+    2)
+        log_info "Limpando apenas dados do banco de dados."
+        FRESH_MIGRATE="yes"
+        ;;
+    3)
+        log_warning "Limpando todos os volumes Docker..."
+        docker volume prune -f
+        log_success "Volumes limpos com sucesso."
+        FRESH_MIGRATE="yes"
+        ;;
+    *)
+        log_warning "Opção inválida. Usando opção padrão (1) - Manter todos os dados."
+        FRESH_MIGRATE="no"
+        ;;
+esac
+
+# Inicia o build dos containers
+log_info "Iniciando build e download dos containers Docker..."
+$DOCKER_COMPOSE build
+
+# Inicia o banco de dados primeiro para que esteja pronto quando a aplicação iniciar
+log_info "Iniciando o banco de dados..."
+$DOCKER_COMPOSE up -d db
+log_info "Aguardando banco de dados inicializar..."
+sleep 10  # Espera o banco inicializar
+
+# Inicia os gateways
+log_info "Iniciando gateways de pagamento..."
+$DOCKER_COMPOSE up -d gateway1 gateway2
+log_info "Aguardando gateways inicializarem..."
+sleep 5  # Espera os gateways inicializarem
+
+# Inicia o restante da aplicação
+log_info "Iniciando o restante da aplicação..."
 $DOCKER_COMPOSE up -d
 
 # Verificar se os contêineres estão funcionando
-log_info "Aguardando os contêineres iniciarem..."
-attempt=1
-max_attempts=10  # Aumentado para dar mais tempo
-while [ $attempt -le $max_attempts ]; do
-    log_info "Verificando contêineres... Tentativa $attempt de $max_attempts"
+log_info "Verificando status dos contêineres..."
+
+# Lista os contêineres iniciados
+$DOCKER_COMPOSE ps
+
+# Verificar se o contêiner da aplicação está pronto
+APP_READY=false
+MAX_ATTEMPTS=15
+ATTEMPT=1
+
+while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+    log_info "Verificando aplicação Laravel... (Tentativa $ATTEMPT de $MAX_ATTEMPTS)"
     
-    if $DOCKER_COMPOSE ps | grep -q "multigateway-app.*Up"; then
-        log_success "Contêiner da aplicação está rodando!"
-        
-        # Verificar vendor
-        if ! $DOCKER_COMPOSE exec app ls -la vendor &> /dev/null; then
-            log_warning "Pasta vendor não encontrada no container. Instalando dependências..."
-            $DOCKER_COMPOSE exec app composer install --no-interaction
-        fi
-        
+    if $DOCKER_COMPOSE exec app php -v &> /dev/null; then
+        log_success "Aplicação está rodando!"
+        APP_READY=true
         break
     else
-        if [ $attempt -eq $max_attempts ]; then
-            log_error "Tempo limite excedido. Verifique os logs com '$DOCKER_COMPOSE logs app'"
-            exit 1
+        if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+            log_error "Tempo limite excedido. A aplicação pode não estar funcionando corretamente."
+        else
+            log_warning "Aplicação ainda não está pronta. Aguardando..."
+            sleep 8
+            ATTEMPT=$((ATTEMPT+1))
         fi
-        log_warning "Contêiner ainda não está pronto. Aguardando..."
-        sleep 15  # Aumentado para dar mais tempo
-        attempt=$((attempt+1))
     fi
 done
 
-# Aplicar configurações do Laravel
-log_info "Configurando a aplicação Laravel..."
-
-# Verificar se o vendor/autoload.php existe
-log_info "Verificando dependências do Laravel..."
-if ! $DOCKER_COMPOSE exec app test -f /var/www/html/vendor/autoload.php; then
-    log_warning "O arquivo vendor/autoload.php não foi encontrado!"
-    log_info "Tentando instalar dependências no container..."
-    
-    # Tentar instalar dependências novamente
+if [ "$APP_READY" = true ]; then
+    # Instalar dependências do composer
+    log_info "Instalando dependências do Composer..."
     $DOCKER_COMPOSE exec app composer install --no-interaction
-    
-    # Verificar novamente
-    if ! $DOCKER_COMPOSE exec app test -f /var/www/html/vendor/autoload.php; then
-        log_error "Falha ao instalar dependências do Laravel!"
-        log_error "Conteúdo do diretório do aplicativo:"
-        $DOCKER_COMPOSE exec app ls -la
-        log_error "Verificando a existência de composer.json:"
-        $DOCKER_COMPOSE exec app cat composer.json || echo "Arquivo composer.json não encontrado!"
-        exit 1
-    fi
-fi
 
-# Verificar se o Laravel está funcionando corretamente
-MAX_RETRY=3
-RETRY=0
-while [ $RETRY -lt $MAX_RETRY ]; do
-    if $DOCKER_COMPOSE exec app php artisan --version &> /dev/null; then
-        log_success "Laravel está funcionando corretamente!"
-        
-        log_info "Gerando chave da aplicação..."
-        $DOCKER_COMPOSE exec app php artisan key:generate --force
-        
-        log_info "Executando migrações e seeders..."
-        $DOCKER_COMPOSE exec app php artisan migrate --seed
-        log_success "Migrações executadas com sucesso!"
-        break
+    # Gerar chave da aplicação
+    log_info "Gerando chave da aplicação..."
+    $DOCKER_COMPOSE exec app php artisan key:generate --force
+
+    # Executar migrações, com opção de limpar o banco ou não
+    if [ "$FRESH_MIGRATE" = "yes" ]; then
+        log_info "Resetando banco de dados e executando migrações..."
+        $DOCKER_COMPOSE exec app php artisan migrate:fresh --seed --force
     else
-        RETRY=$((RETRY+1))
-        if [ $RETRY -eq $MAX_RETRY ]; then
-            log_error "Laravel não está funcionando corretamente após $MAX_RETRY tentativas!"
-            log_error "Verificando permissões e estrutura de diretórios:"
-            $DOCKER_COMPOSE exec app ls -la
-            log_error "Logs do contêiner:"
-            $DOCKER_COMPOSE logs app
-            exit 1
-        fi
-        log_warning "Tentativa $RETRY de $MAX_RETRY falhou. Aguardando e tentando novamente..."
-        sleep 5
+        log_info "Executando migrações sem resetar banco de dados..."
+        # Tenta executar migrações comuns, ignorando erros (tabelas já existem)
+        $DOCKER_COMPOSE exec app php artisan migrate --seed --force || true
     fi
-done
 
-log_info "Limpando cache e otimizando..."
-$DOCKER_COMPOSE exec app php artisan optimize
-$DOCKER_COMPOSE exec app php artisan view:clear
-$DOCKER_COMPOSE exec app php artisan cache:clear
-log_success "Aplicação otimizada!"
+    # Otimizar o Laravel
+    log_info "Otimizando a aplicação..."
+    $DOCKER_COMPOSE exec app php artisan optimize
+    $DOCKER_COMPOSE exec app php artisan view:clear
+    $DOCKER_COMPOSE exec app php artisan cache:clear
+
+    # Verificar se o Laravel está acessível
+    log_info "Verificando se o Laravel está acessível..."
+    if curl -s -o /dev/null -w "%{http_code}" "http://localhost:8000" | grep -q "200"; then
+        log_success "Laravel está acessível via http://localhost:8000"
+    else
+        log_warning "Não foi possível confirmar se o Laravel está acessível. Tente acessar manualmente http://localhost:8000"
+    fi
+else
+    log_error "Não foi possível verificar se a aplicação está funcionando corretamente. Verifique os logs para mais detalhes:"
+    $DOCKER_COMPOSE logs app
+    exit 1
+fi
 
 # Exibir resumo
 echo -e "\n\e[1;42m SETUP CONCLUÍDO COM SUCESSO! \e[0m\n"
@@ -285,6 +326,16 @@ echo "=====================================\e[0m"
 echo "Sua aplicação Laravel está rodando em:"
 echo "- Aplicação Web: http://localhost:8000"
 echo "- API: http://localhost:8000/api"
+echo "- Acesso ao Banco: localhost:3306 (via cliente de banco de dados)"
+echo "- Gateway 1: http://localhost:3001"
+echo "- Gateway 2: http://localhost:3002"
+echo -e "\n\e[1;33m====================================="
+echo "      USUÁRIOS DE TESTE"
+echo "=====================================\e[0m"
+echo "Admin: admin@example.com / password"
+echo "Finance: finance@example.com / password"
+echo "Manager: manager@example.com / password"
+echo "User: user@example.com / password"
 echo -e "\n\e[1;33m====================================="
 echo "      COMANDOS ÚTEIS"
 echo "=====================================\e[0m"
@@ -296,6 +347,9 @@ echo "  $DOCKER_COMPOSE logs -f app"
 echo ""
 echo "Para acessar o terminal do contêiner:"
 echo "  $DOCKER_COMPOSE exec app bash"
+echo ""
+echo "Para executar os testes:"
+echo "  ./run-tests.sh"
 echo ""
 echo "Para parar os contêineres:"
 echo "  $DOCKER_COMPOSE down"

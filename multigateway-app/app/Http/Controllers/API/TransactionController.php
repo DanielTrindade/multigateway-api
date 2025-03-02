@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers\API;
 
 use App\Models\Client;
@@ -32,13 +33,18 @@ class TransactionController extends Controller
     public function purchase(Request $request)
     {
         $validatedData = $request->validate([
-            'products' => 'required|array',
+            'products' => 'required|array|min:1',
             'products.*.id' => 'required|exists:products,id',
-            'products.*.quantity' => 'required|integer|min:1',
+            'products.*.quantity' => 'required|integer|min:1|max:100',
             'client_name' => 'required|string|max:255',
-            'client_email' => 'required|email|max:255',
-            'card_number' => 'required|string|size:16',
-            'card_cvv' => 'required|string|size:3',
+            'client_email' => 'required|email:rfc,dns|max:255',
+            'card_number' => [
+                'required',
+                'string',
+                'size:16',
+                'regex:/^[0-9]+$/'
+            ],
+            'card_cvv' => 'required|string|size:3|regex:/^[0-9]+$/',
         ]);
 
         // Calcular o total
@@ -113,7 +119,7 @@ class TransactionController extends Controller
 
         try {
             $refundResponse = $this->paymentService->refundPayment($transaction);
-
+            $transaction = Transaction::findOrFail($transaction->id);
             $transaction->status = 'REFUNDED';
             $transaction->save();
 

@@ -3,50 +3,40 @@
 namespace Tests\Feature;
 
 use App\Models\Product;
-use App\Models\Role;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 class ProductControllerTest extends TestCase
 {
-  use RefreshDatabase;
+  use DatabaseTransactions;
 
   protected $adminUser;
   protected $managerUser;
   protected $financeUser;
   protected $regularUser;
+  protected $existingProduct;
 
   protected function setUp(): void
   {
     parent::setUp();
 
-    // Criar roles
-    $adminRole = Role::create(['name' => 'ADMIN', 'description' => 'Administrator']);
-    $managerRole = Role::create(['name' => 'MANAGER', 'description' => 'Manager']);
-    $financeRole = Role::create(['name' => 'FINANCE', 'description' => 'Finance']);
-    $userRole = Role::create(['name' => 'USER', 'description' => 'Regular User']);
+    // Usar usuários existentes do seed
+    $this->adminUser = User::where('email', 'admin@example.com')->first();
+    $this->managerUser = User::where('email', 'manager@example.com')->first();
+    $this->financeUser = User::where('email', 'finance@example.com')->first();
+    $this->regularUser = User::where('email', 'user@example.com')->first();
 
-    // Criar usuários com diferentes roles
-    $this->adminUser = User::factory()->create(['name' => 'Admin User']);
-    $this->adminUser->roles()->attach($adminRole);
-
-    $this->managerUser = User::factory()->create(['name' => 'Manager User']);
-    $this->managerUser->roles()->attach($managerRole);
-
-    $this->financeUser = User::factory()->create(['name' => 'Finance User']);
-    $this->financeUser->roles()->attach($financeRole);
-
-    $this->regularUser = User::factory()->create(['name' => 'Regular User']);
-    $this->regularUser->roles()->attach($userRole);
+    // Usar um produto existente do seed para testes
+    $this->existingProduct = Product::first();
   }
 
   #[Test]
   public function admin_can_create_products()
   {
     $productData = [
-      'name' => 'Test Product',
+      'name' => 'Test Product Admin',
       'amount' => 1000, // R$ 10,00 em centavos
     ];
 
@@ -55,7 +45,7 @@ class ProductControllerTest extends TestCase
 
     $response->assertStatus(201)
       ->assertJson([
-        'name' => 'Test Product',
+        'name' => 'Test Product Admin',
         'amount' => 1000,
       ]);
 
@@ -110,21 +100,21 @@ class ProductControllerTest extends TestCase
   #[Test]
   public function any_authenticated_user_can_view_products()
   {
-    // Criar alguns produtos para listar
-    Product::create(['name' => 'Product 1', 'amount' => 1000]);
-    Product::create(['name' => 'Product 2', 'amount' => 2000]);
+    // Os produtos já existem do seed, não precisamos criar mais
 
     // Testar acesso para usuário regular
     $response = $this->actingAs($this->regularUser)
       ->getJson('/api/products');
 
-    $response->assertStatus(200)
-      ->assertJsonCount(2);
+    $response->assertStatus(200);
+    // Deve haver pelo menos os 3 produtos do seed
+    $this->assertGreaterThanOrEqual(3, count($response->json()));
   }
 
   #[Test]
   public function admin_can_update_products()
   {
+    // Criar um produto específico para atualização
     $product = Product::create(['name' => 'Original Product', 'amount' => 1000]);
 
     $updateData = [
@@ -144,12 +134,18 @@ class ProductControllerTest extends TestCase
   #[Test]
   public function admin_can_delete_products()
   {
+    // Criar um produto específico para exclusão
     $product = Product::create(['name' => 'Product to Delete', 'amount' => 1000]);
 
     $response = $this->actingAs($this->adminUser)
       ->deleteJson("/api/products/{$product->id}");
 
     $response->assertStatus(204);
-    $this->assertDatabaseMissing('products', ['id' => $product->id]);
+
+    // Como estamos usando soft deletes, o produto ainda existe mas com deleted_at
+    $this->assertSoftDeleted('products', ['id' => $product->id]);
+
+    // Verificar se não é mais acessível via consultas normais
+    $this->assertNull(Product::find($product->id));
   }
 }

@@ -2,35 +2,22 @@
 
 namespace Tests\Feature;
 
-use App\Models\Role;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 use PHPUnit\Framework\Attributes\Test;
 
 class AuthenticationControllerTest extends TestCase
 {
-  use RefreshDatabase;
+  use DatabaseTransactions; // Transação para isolar os testes sem limpar o banco
 
   #[Test]
   public function user_can_login_with_correct_credentials()
   {
-    // Criar role de usuário padrão
-    $userRole = Role::create(['name' => 'USER', 'description' => 'Regular User']);
-
-    // Criar usuário
-    $user = User::factory()->create([
-      'email' => 'test@example.com',
-      'password' => bcrypt('password'),
-    ]);
-
-    // Atribuir role
-    $user->roles()->attach($userRole);
-
-    // Tentar login com credenciais corretas
+    // Usar usuário existente do seed em vez de criar novo
     $response = $this->postJson('/api/login', [
-      'email' => 'test@example.com',
-      'password' => 'password',
+      'email' => 'user@example.com', // Usuario do seed
+      'password' => 'password',      // Senha padrão do seed
     ]);
 
     // Verificar resposta
@@ -44,15 +31,9 @@ class AuthenticationControllerTest extends TestCase
   #[Test]
   public function user_cannot_login_with_incorrect_credentials()
   {
-    // Criar usuário
-    User::factory()->create([
-      'email' => 'test@example.com',
-      'password' => bcrypt('password'),
-    ]);
-
-    // Tentar login com senha incorreta
+    // Usar usuário existente do seed
     $response = $this->postJson('/api/login', [
-      'email' => 'test@example.com',
+      'email' => 'user@example.com',
       'password' => 'wrong-password',
     ]);
 
@@ -66,13 +47,10 @@ class AuthenticationControllerTest extends TestCase
   #[Test]
   public function user_can_register()
   {
-    // Criar role de usuário padrão (necessário para o registro)
-    Role::create(['name' => 'USER', 'description' => 'Regular User']);
-
-    // Dados para registro
+    // Dados para registro (não precisamos criar a role, pois já existe no seed)
     $userData = [
-      'name' => 'John Doe',
-      'email' => 'john@example.com',
+      'name' => 'New Test User',
+      'email' => 'newtest@example.com',
       'password' => 'password123',
       'password_confirmation' => 'password123',
     ];
@@ -94,12 +72,12 @@ class AuthenticationControllerTest extends TestCase
 
     // Verificar se o usuário existe no banco
     $this->assertDatabaseHas('users', [
-      'name' => 'John Doe',
-      'email' => 'john@example.com',
+      'name' => 'New Test User',
+      'email' => 'newtest@example.com',
     ]);
 
     // Verificar se a role USER foi atribuída
-    $user = User::where('email', 'john@example.com')->first();
+    $user = User::where('email', 'newtest@example.com')->first();
     $this->assertTrue($user->hasRole('USER'));
   }
 }
