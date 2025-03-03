@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\UserResource;
 use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
@@ -14,19 +15,17 @@ class UserController extends Controller
     {
         $this->authorize('manage-users');
 
-        $users = User::all();
-        return response()->json($users);
+        $users = User::with('roles')->get();
+        return UserResource::collection($users);
     }
 
-    public function store(Request $request)
+    public function register(Request $request)
     {
-        $this->authorize('manage-users');
-
         $validatedData = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8',
-            'roles' => 'required|array',
+            'password' => 'required|string|min:8|confirmed',
+            'roles' => 'sometimes|array',
             'roles.*' => 'exists:roles,name',
         ]);
 
@@ -36,18 +35,31 @@ class UserController extends Controller
             'password' => Hash::make($validatedData['password']),
         ]);
 
-        // Atribuir roles
-        $roles = Role::whereIn('name', $validatedData['roles'])->get();
-        $user->roles()->attach($roles);
+        // Atribuir roles ou USER por padrão
+        if (isset($validatedData['roles']) && !empty($validatedData['roles'])) {
+            $roles = Role::whereIn('name', $validatedData['roles'])->get();
+            $user->roles()->attach($roles);
+        } else {
+            // Atribuir role USER por padrão
+            $userRole = Role::where('name', 'USER')->first();
+            if ($userRole) {
+                $user->roles()->attach($userRole);
+            }
+        }
 
-        return response()->json($user->load('roles'), 201);
+        $token = $user->createToken('api-token')->plainTextToken;
+
+        return response()->json([
+            'user' => $user->load('roles'),
+            'token' => $token
+        ], 201);
     }
 
     public function show(User $user)
     {
         $this->authorize('manage-users');
 
-        return response()->json($user);
+        return new UserResource($user->load('roles'));
     }
 
     public function update(Request $request, User $user)
@@ -73,15 +85,16 @@ class UserController extends Controller
             $user->roles()->sync($roles);
         }
 
-        return response()->json($user->load('roles'));
+        return new UserResource($user->load('roles'));
     }
 
 
     public function destroy(User $user)
     {
+
         $this->authorize('manage-users');
 
-        if ($user->id === auth()->id) {
+        if ($user->id === auth()->id()) {
             return response()->json([
                 'message' => 'Você não pode excluir seu próprio usuário'
             ], 422);
@@ -100,9 +113,18 @@ class UserController extends Controller
             'role' => 'required|in:ADMIN,MANAGER,FINANCE,USER',
         ]);
 
-        $user->role = $validatedData['role'];
-        $user->save();
+        // Encontrar a role correspondente
+        $role = Role::where('name', $validatedData['role'])->first();
 
-        return response()->json($user);
+        if (!$role) {
+            return response()->json([
+                'message' => 'Role não encontrada'
+            ], 422);
+        }
+
+        // Substituir todas as roles atuais pela nova role
+        $user->roles()->sync([$role->id]);
+
+        return new UserResource($user->load('roles'));
     }
 }

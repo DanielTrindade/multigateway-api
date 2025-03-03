@@ -13,11 +13,6 @@ use App\Http\Controllers\API\UserController;
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
-|
-| Here is where you can register API routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "api" middleware group. Make something great!
-|
 */
 
 // Rotas públicas
@@ -32,36 +27,48 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
     // Gateways
-    Route::get('/gateways', [GatewayController::class, 'index']);
-    Route::get('/gateways/{gateway}', [GatewayController::class, 'show']);
-    Route::post('/gateways', [GatewayController::class, 'store']);
-    Route::put('/gateways/{gateway}', [GatewayController::class, 'update']);
-    Route::delete('/gateways/{gateway}', [GatewayController::class, 'destroy']);
-    Route::patch('/gateways/{gateway}/toggle', [GatewayController::class, 'toggleActive']);
-    Route::patch('/gateways/{gateway}/priority', [GatewayController::class, 'updatePriority']);
+    Route::controller(GatewayController::class)->prefix('gateways')->group(function () {
+        Route::get('/', 'index')->name('gateways.index');
+        Route::get('/{gateway}', 'show')->name('gateways.show');
+        Route::post('/', 'store')->name('gateways.store');
+        Route::put('/{gateway}', 'update')->name('gateways.update');
+        Route::delete('/{gateway}', 'destroy')->name('gateways.destroy');
+        Route::patch('/{gateway}/toggle', 'toggleActive')->name('gateways.toggle');
+        Route::patch('/{gateway}/priority', 'updatePriority')->name('gateways.priority');
+        Route::post('/reorder', 'reorderPriorities')->name('gateways.reorderPriorities');
+        Route::post('/normalize', 'normalizePriorities')->name('gateways.normalizePriorities');
+    });
 
     // Produtos
-    Route::get('/products', [ProductController::class, 'index']);
-    Route::get('/products/{product}', [ProductController::class, 'show']);
-    Route::post('/products', [ProductController::class, 'store']);
-    Route::put('/products/{product}', [ProductController::class, 'update']);
-    Route::delete('/products/{product}', [ProductController::class, 'destroy']);
+    Route::controller(ProductController::class)->prefix('products')->group(function () {
+        Route::get('/', 'index')->name('products.index');
+        Route::get('/{product}', 'show')->name('products.show');
+        Route::post('/', 'store')->name('products.store');
+        Route::put('/{product}', 'update')->name('products.update');
+        Route::delete('/{product}', 'destroy')->name('products.destroy');
+    });
 
     // Clientes
-    Route::get('/clients', [ClientController::class, 'index']);
-    Route::get('/clients/{client}', [ClientController::class, 'show']);
-    Route::get('/clients/{client}/transactions', [ClientController::class, 'transactions']);
+    Route::controller(ClientController::class)->prefix('clients')->group(function () {
+        Route::get('/', 'index')->name('clients.index');
+        Route::get('/{client}', 'show')->name('clients.show');
+        Route::get('/{client}/transactions', 'transactions')->name('clients.transactions');
+    });
 
     // Transações
-    Route::get('/transactions', [TransactionController::class, 'index']);
-    Route::get('/transactions/{transaction}', [TransactionController::class, 'show']);
-    Route::post('/transactions/{transaction}/refund', [TransactionController::class, 'refund']);
+    Route::controller(TransactionController::class)->prefix('transactions')->group(function () {
+        Route::get('/', 'index')->name('transactions.index');
+        Route::get('/{transaction}', 'show')->name('transactions.show');
+        Route::post('/{transaction}/refund', 'refund')->name('transactions.refund');
+    });
 
     // Usuários
-    Route::get('/users', [UserController::class, 'index']);
-    Route::get('/users/{user}', [UserController::class, 'show']);
-    Route::post('/users', [UserController::class, 'store']);
-    Route::put('/users/{user}', [UserController::class, 'update']);
-    Route::delete('/users/{user}', [UserController::class, 'destroy']);
-    Route::patch('/users/{user}/role', [UserController::class, 'updateRole']);
+    Route::controller(UserController::class)->prefix('users')->group(function () {
+        Route::get('/', 'index')->name('users.index');
+        Route::get('/{user}', 'show')->name('users.show');
+        Route::post('/', 'store')->name('users.store');
+        Route::put('/{user}', 'update')->name('users.update');
+        Route::delete('/{user}', 'destroy')->name('users.destroy');
+        Route::patch('/{user}/role', 'updateRole')->name('users.update-role');
+    });
 });

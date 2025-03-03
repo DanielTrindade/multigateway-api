@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers\API;
 
 use App\Models\Client;
@@ -7,6 +8,7 @@ use App\Models\Transaction;
 use App\Services\Payment\PaymentService;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\TransactionResource;
 
 class TransactionController extends Controller
 {
@@ -19,26 +21,31 @@ class TransactionController extends Controller
 
     public function index()
     {
-        $transactions = Transaction::with(['client', 'gateway', 'products'])->get();
-        return response()->json($transactions);
+        $transactions = Transaction::with(['client', 'gateway', 'products'])->paginate(20);
+        return TransactionResource::collection($transactions);
     }
 
     public function show(Transaction $transaction)
     {
         $transaction->load(['client', 'gateway', 'products']);
-        return response()->json($transaction);
+        return new TransactionResource($transaction);
     }
 
     public function purchase(Request $request)
     {
         $validatedData = $request->validate([
-            'products' => 'required|array',
+            'products' => 'required|array|min:1',
             'products.*.id' => 'required|exists:products,id',
-            'products.*.quantity' => 'required|integer|min:1',
+            'products.*.quantity' => 'required|integer|min:1|max:100',
             'client_name' => 'required|string|max:255',
-            'client_email' => 'required|email|max:255',
-            'card_number' => 'required|string|size:16',
-            'card_cvv' => 'required|string|size:3',
+            'client_email' => 'required|email:rfc,dns|max:255',
+            'card_number' => [
+                'required',
+                'string',
+                'size:16',
+                'regex:/^[0-9]+$/'
+            ],
+            'card_cvv' => 'required|string|size:3|regex:/^[0-9]+$/',
         ]);
 
         // Calcular o total
@@ -97,7 +104,7 @@ class TransactionController extends Controller
         $transaction->load(['client', 'products']);
         return response()->json([
             'message' => 'Compra realizada com sucesso',
-            'transaction' => $transaction
+            'transaction' => new TransactionResource($transaction)
         ], 201);
     }
 
@@ -113,13 +120,13 @@ class TransactionController extends Controller
 
         try {
             $refundResponse = $this->paymentService->refundPayment($transaction);
-
+            $transaction = Transaction::findOrFail($transaction->id);
             $transaction->status = 'REFUNDED';
             $transaction->save();
 
             return response()->json([
                 'message' => 'Reembolso realizado com sucesso',
-                'transaction' => $transaction,
+                'transaction' => new TransactionResource($transaction),
                 'response' => $refundResponse
             ]);
         } catch (\Exception $e) {

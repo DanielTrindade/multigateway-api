@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Gateway extends Model
 {
-    protected $fillable = ['name', 'is_active', 'priority', 'credentials'];
+    use SoftDeletes, HasFactory;
+    protected $fillable = ['name', 'type', 'is_active', 'priority', 'credentials'];
     protected $casts = [
         'is_active' => 'boolean',
         'credentials' => 'array',

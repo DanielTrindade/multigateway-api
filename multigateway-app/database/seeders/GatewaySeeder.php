@@ -16,6 +16,7 @@ class GatewaySeeder extends Seeder
         // Configurar gateways iniciais
         Gateway::create([
             'name' => 'Gateway 1',
+            'type' => 'gateway1',
             'is_active' => true,
             'priority' => 1,
             'credentials' => [
@@ -26,6 +27,7 @@ class GatewaySeeder extends Seeder
 
         Gateway::create([
             'name' => 'Gateway 2',
+            'type' => 'gateway2',
             'is_active' => true,
             'priority' => 2,
             'credentials' => [

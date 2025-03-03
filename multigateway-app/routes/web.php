@@ -4,5 +4,5 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     $port = env('PORT', 8000);
-    return "working at port: $port" ;
+    return "Laravel server working at port: $port" ;
 });

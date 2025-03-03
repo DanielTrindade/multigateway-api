@@ -4,13 +4,14 @@ namespace App\Http\Controllers\API;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller as Controller;
+use App\Http\Resources\ProductResource;
 
 class ProductController extends Controller
 {
     public function index()
     {
-        $products = Product::all();
-        return response()->json($products);
+        $products = Product::paginate(20);
+        return ProductResource::collection($products);
     }
 
     public function store(Request $request)
@@ -24,12 +25,12 @@ class ProductController extends Controller
 
         $product = Product::create($validatedData);
 
-        return response()->json($product, 201);
+        return new ProductResource($product);
     }
 
     public function show(Product $product)
     {
-        return response()->json($product);
+        return new ProductResource($product);
     }
 
     public function update(Request $request, Product $product)
@@ -43,7 +44,7 @@ class ProductController extends Controller
 
         $product->update($validatedData);
 
-        return response()->json($product);
+        return new ProductResource($product);
     }
 
     public function destroy(Product $product)
