@@ -35,6 +35,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{gateway}', 'destroy')->name('gateways.destroy');
         Route::patch('/{gateway}/toggle', 'toggleActive')->name('gateways.toggle');
         Route::patch('/{gateway}/priority', 'updatePriority')->name('gateways.priority');
+        Route::post('/reorder', 'reorderPriorities')->name('gateways.reorderPriorities');
+        Route::post('/normalize', 'normalizePriorities')->name('gateways.normalizePriorities');
     });
 
     // Produtos

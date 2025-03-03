@@ -40,22 +40,17 @@ class PaymentService
 
             foreach ($dbGateways as $gateway) {
                 try {
-                    // Determinar qual classe de gateway usar baseado no nome
-                    if (strpos(strtolower($gateway->name), 'gateway 1') !== false) {
-                        $gatewayInstance = $this->createGateway1($gateway);
-                    } else if (strpos(strtolower($gateway->name), 'gateway 2') !== false) {
-                        $gatewayInstance = $this->createGateway2($gateway);
-                    } else {
-                        Log::warning("Gateway não reconhecido: " . $gateway->name);
-                        continue;
+                    // Utilizar o método getGatewayInstance para criar a instância
+                    $gatewayInstance = $this->getGatewayInstance($gateway);
+
+                    if ($gatewayInstance) {
+                        $this->gateways[] = [
+                            'id' => $gateway->id,
+                            'instance' => $gatewayInstance,
+                        ];
+
+                        Log::info("Gateway carregado com sucesso: " . $gateway->name);
                     }
-
-                    $this->gateways[] = [
-                        'id' => $gateway->id,
-                        'instance' => $gatewayInstance,
-                    ];
-
-                    Log::info("Gateway carregado com sucesso: " . $gateway->name);
                 } catch (\Exception $e) {
                     Log::error("Erro ao carregar gateway {$gateway->name}: " . $e->getMessage());
                 }
@@ -63,6 +58,29 @@ class PaymentService
         } catch (\Exception $e) {
             Log::error("Erro ao carregar gateways: " . $e->getMessage());
         }
+    }
+
+    /**
+     * Cria uma instância do gateway com base no tipo
+     */
+    protected function getGatewayInstance($gateway)
+    {
+        // Mapeamento dos tipos de gateway para suas classes
+        $gatewayTypes = [
+            'gateway1' => Gateway1::class,
+            'gateway2' => Gateway2::class,
+            // Adicionar novos gateways aqui
+        ];
+
+        $type = strtolower($gateway->type);
+
+        if (isset($gatewayTypes[$type])) {
+            $class = $gatewayTypes[$type];
+            return new $class();
+        }
+
+        Log::warning("Tipo de gateway não reconhecido: {$type}");
+        return null;
     }
 
     protected function createGateway1($gateway)
@@ -152,12 +170,10 @@ class PaymentService
                     throw new \Exception("Gateway ID {$gatewayId} não encontrado no banco de dados");
                 }
 
-                if (strpos(strtolower($dbGateway->name), 'gateway 1') !== false) {
-                    $gatewayInstance = $this->createGateway1($dbGateway);
-                } else if (strpos(strtolower($dbGateway->name), 'gateway 2') !== false) {
-                    $gatewayInstance = $this->createGateway2($dbGateway);
-                } else {
-                    throw new \Exception("Tipo de gateway não reconhecido: {$dbGateway->name}");
+                $gatewayInstance = $this->getGatewayInstance($dbGateway);
+
+                if (!$gatewayInstance) {
+                    throw new \Exception("Não foi possível criar uma instância do gateway {$dbGateway->name}");
                 }
             } catch (\Exception $e) {
                 Log::error("Erro ao carregar gateway para reembolso: " . $e->getMessage());

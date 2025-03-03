@@ -19,8 +19,12 @@ class GatewayFactory extends Factory
      */
     public function definition(): array
     {
+        $gatewayTypes = ['gateway1', 'gateway2', 'gateway3'];
+        $index = $this->faker->numberBetween(0, 2);
+
         return [
-            'name' => $this->faker->randomElement(['Gateway 1', 'Gateway 2', 'Gateway 3']),
+            'name' => 'Gateway ' . ($index + 1),
+            'type' => $gatewayTypes[$index],
             'is_active' => true,
             'priority' => $this->faker->numberBetween(1, 10),
             'credentials' => json_encode([
@@ -35,8 +39,18 @@ class GatewayFactory extends Factory
      */
     public function inactive(): Factory
     {
-        return $this->state(fn (array $attributes) => [
+        return $this->state(fn(array $attributes) => [
             'is_active' => false,
+        ]);
+    }
+
+    /**
+     * Set specific gateway type.
+     */
+    public function withType(string $type): Factory
+    {
+        return $this->state(fn(array $attributes) => [
+            'type' => $type,
         ]);
     }
 }

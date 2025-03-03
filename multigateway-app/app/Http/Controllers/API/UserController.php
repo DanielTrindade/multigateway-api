@@ -19,15 +19,13 @@ class UserController extends Controller
         return UserResource::collection($users);
     }
 
-    public function store(Request $request)
+    public function register(Request $request)
     {
-        $this->authorize('manage-users');
-
         $validatedData = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8',
-            'roles' => 'required|array',
+            'password' => 'required|string|min:8|confirmed',
+            'roles' => 'sometimes|array',
             'roles.*' => 'exists:roles,name',
         ]);
 
@@ -37,11 +35,24 @@ class UserController extends Controller
             'password' => Hash::make($validatedData['password']),
         ]);
 
-        // Atribuir roles
-        $roles = Role::whereIn('name', $validatedData['roles'])->get();
-        $user->roles()->attach($roles);
+        // Atribuir roles ou USER por padrão
+        if (isset($validatedData['roles']) && !empty($validatedData['roles'])) {
+            $roles = Role::whereIn('name', $validatedData['roles'])->get();
+            $user->roles()->attach($roles);
+        } else {
+            // Atribuir role USER por padrão
+            $userRole = Role::where('name', 'USER')->first();
+            if ($userRole) {
+                $user->roles()->attach($userRole);
+            }
+        }
 
-        return new UserResource($user->load('roles'));
+        $token = $user->createToken('api-token')->plainTextToken;
+
+        return response()->json([
+            'user' => $user->load('roles'),
+            'token' => $token
+        ], 201);
     }
 
     public function show(User $user)

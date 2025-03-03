@@ -26,8 +26,79 @@ class GatewayControllerTest extends TestCase
         $this->regularUser = User::where('email', 'user@example.com')->first();
 
         // Usar gateways do seed
-        $this->gateway1 = Gateway::where('name', 'Gateway 1')->first();
-        $this->gateway2 = Gateway::where('name', 'Gateway 2')->first();
+        $this->gateway1 = Gateway::firstOrCreate(
+            ['name' => 'Gateway 1'],
+            [
+                'type' => 'gateway1',
+                'is_active' => true,
+                'priority' => 1
+            ]
+        );
+
+        $this->gateway2 = Gateway::firstOrCreate(
+            ['name' => 'Gateway 2'],
+            [
+                'type' => 'gateway2',
+                'is_active' => true,
+                'priority' => 2
+            ]
+        );
+    }
+
+    #[Test]
+    public function admin_can_create_gateway_with_type()
+    {
+        $gatewayData = [
+            'name' => 'New Test Gateway',
+            'type' => 'gateway3',
+            'is_active' => true,
+            'priority' => 3,
+            'credentials' => [
+                'api_key' => 'test_key',
+                'api_secret' => 'test_secret'
+            ]
+        ];
+
+        $response = $this->actingAs($this->adminUser)
+            ->postJson('/api/gateways', $gatewayData);
+
+        $response->assertStatus(201)
+            ->assertJson([
+                'data' => [
+                    'name' => 'New Test Gateway',
+                    'type' => 'gateway3',
+                    'is_active' => true,
+                    'priority' => 3
+                ]
+            ]);
+
+        $this->assertDatabaseHas('gateways', [
+            'name' => 'New Test Gateway',
+            'type' => 'gateway3'
+        ]);
+    }
+
+    #[Test]
+    public function admin_can_update_gateway_type()
+    {
+        $updateData = [
+            'type' => 'updated_gateway_type'
+        ];
+
+        $response = $this->actingAs($this->adminUser)
+            ->putJson("/api/gateways/{$this->gateway1->id}", $updateData);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'data' => [
+                    'type' => 'updated_gateway_type'
+                ]
+            ]);
+
+        $this->assertDatabaseHas('gateways', [
+            'id' => $this->gateway1->id,
+            'type' => 'updated_gateway_type'
+        ]);
     }
 
     #[Test]
@@ -83,7 +154,7 @@ class GatewayControllerTest extends TestCase
         $response = $this->actingAs($this->regularUser)
             ->patchJson("/api/gateways/{$this->gateway1->id}/toggle");
 
-        $response->assertStatus(403); // Forbidden
+        $response->assertStatus(403);
 
         $this->assertDatabaseHas('gateways', [
             'id' => $this->gateway1->id,
@@ -104,7 +175,8 @@ class GatewayControllerTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJson([
-                'data' => [
+                'message' => 'Prioridade atualizada com sucesso',
+                'gateway' => [
                     'priority' => $newPriority
                 ]
             ]);
@@ -136,5 +208,102 @@ class GatewayControllerTest extends TestCase
             'id' => $this->gateway1->id,
             'priority' => $originalPriority
         ]);
+    }
+
+    #[Test]
+    public function admin_can_reorder_multiple_gateway_priorities()
+    {
+        // Criar um terceiro gateway para teste
+        $gateway3 = Gateway::factory()->create([
+            'name' => 'Gateway 3',
+            'type' => 'gateway3',
+            'priority' => 3,
+            'is_active' => true
+        ]);
+
+        // Nova ordem desejada
+        $newOrder = [
+            ['id' => $this->gateway1->id, 'priority' => 3],
+            ['id' => $this->gateway2->id, 'priority' => 1],
+            ['id' => $gateway3->id, 'priority' => 2]
+        ];
+
+        $response = $this->actingAs($this->adminUser)
+            ->postJson('/api/gateways/reorder', [
+                'gateways' => $newOrder
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'message' => 'Prioridades reordenadas com sucesso'
+            ]);
+
+        // Verificar se as prioridades foram atualizadas corretamente
+        $this->assertDatabaseHas('gateways', [
+            'id' => $this->gateway1->id,
+            'priority' => 3
+        ]);
+
+        $this->assertDatabaseHas('gateways', [
+            'id' => $this->gateway2->id,
+            'priority' => 1
+        ]);
+
+        $this->assertDatabaseHas('gateways', [
+            'id' => $gateway3->id,
+            'priority' => 2
+        ]);
+    }
+
+    #[Test]
+    public function admin_can_normalize_gateway_priorities()
+    {
+        // Criar gateways com prioridades não consecutivas
+        Gateway::where('id', $this->gateway1->id)->update(['priority' => 5]);
+        Gateway::where('id', $this->gateway2->id)->update(['priority' => 10]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->postJson('/api/gateways/normalize');
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'message' => 'Prioridades normalizadas com sucesso'
+            ]);
+
+        // Recarregar os modelos para obter valores atualizados
+        $this->gateway1->refresh();
+        $this->gateway2->refresh();
+
+        // Verificar se as prioridades foram normalizadas para 1 e 2
+        $this->assertDatabaseHas('gateways', [
+            'id' => $this->gateway1->id,
+            'priority' => 1
+        ]);
+
+        $this->assertDatabaseHas('gateways', [
+            'id' => $this->gateway2->id,
+            'priority' => 2
+        ]);
+    }
+
+    #[Test]
+    public function regular_user_cannot_reorder_or_normalize_priorities()
+    {
+        // Tentar reordenar como usuário normal
+        $response1 = $this->actingAs($this->regularUser)
+            ->postJson('/api/gateways/reorder', [
+                'gateways' => [
+                    ['id' => $this->gateway1->id, 'priority' => 2],
+                    ['id' => $this->gateway2->id, 'priority' => 1]
+                ]
+            ]);
+
+        $response1->assertStatus(403); // Forbidden
+
+        // Tentar normalizar como usuário normal
+        $response2 = $this->actingAs($this->regularUser)
+            ->postJson('/api/gateways/normalize');
+
+        $response2->assertStatus(403); // Forbidden
     }
 }
