@@ -285,9 +285,16 @@ if [ "$APP_READY" = true ]; then
     log_info "Instalando dependências do Composer..."
     $DOCKER_COMPOSE exec app composer install --no-interaction
 
-    # Gerar chave da aplicação
-    log_info "Gerando chave da aplicação..."
-    $DOCKER_COMPOSE exec app php artisan key:generate --force
+    log_info "Verificando chave da aplicação..."
+    APP_KEY=$($DOCKER_COMPOSE exec app php -r "echo env('APP_KEY');")
+    if [ -z "$APP_KEY" ] || [ "$APP_KEY" == "" ]; then
+        log_info "Gerando nova chave da aplicação..."
+        $DOCKER_COMPOSE exec app php artisan key:generate --force
+        log_success "Nova chave gerada com sucesso."
+    else
+        log_success "Chave da aplicação já existe. Mantendo a chave atual."
+    fi
+
 
     # Executar migrações, com opção de limpar o banco ou não
     if [ "$FRESH_MIGRATE" = "yes" ]; then
@@ -304,6 +311,8 @@ if [ "$APP_READY" = true ]; then
     $DOCKER_COMPOSE exec app php artisan optimize
     $DOCKER_COMPOSE exec app php artisan view:clear
     $DOCKER_COMPOSE exec app php artisan cache:clear
+    $DOCKER_COMPOSE exec app php artisan config:clear
+    
 
     # Verificar se o Laravel está acessível
     log_info "Verificando se o Laravel está acessível..."
