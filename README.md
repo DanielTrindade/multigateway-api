@@ -105,7 +105,7 @@ O sistema segue uma arquitetura de camadas com princípios SOLID:
     cd multigateway-api
    ```
 2. Faça a instalação das dependências do laravel:
-  ```bash
+   ```bash
     composer install -d multigateway-app
    ```
 3. Execute o script de setup:
