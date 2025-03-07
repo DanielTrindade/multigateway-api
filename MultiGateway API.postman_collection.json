@@ -1,0 +1,915 @@
+{
+	"info": {
+		"_postman_id": "fe9aed52-1120-4c21-ba29-d41b8a5fbddb",
+		"name": "MultiGateway API",
+		"description": "API RESTful do sistema MultiGateway para gerenciamento de pagamentos através de múltiplos gateways.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
+		"_exporter_id": "19547485"
+	},
+	"item": [
+		{
+			"name": "Autenticação",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var responseData = pm.response.json();",
+									"",
+									"if (responseData.token) {",
+									"    // Salvar o token na variável de ambiente/coleção",
+									"    pm.environment.set(\"auth_token\", responseData.token);",
+									"    pm.collectionVariables.set(\"auth_token\", responseData.token);",
+									"    console.log(\"Token salvo com sucesso: \" + responseData.token);",
+									"    ",
+									"    // Salvar dados do usuário para referência",
+									"    pm.environment.set(\"current_user_id\", responseData.user.id);",
+									"    pm.environment.set(\"current_user_email\", responseData.user.email);",
+									"} else {",
+									"    console.log(\"Token não encontrado na resposta!\");",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"password\"\n}"
+						},
+						"url": "{{base_url}}/login",
+						"description": "Autentica um usuário e retorna um token de acesso. Automaticamente salva o token para uso em outras requisições."
+					},
+					"response": []
+				},
+				{
+					"name": "Registro",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var responseData = pm.response.json();",
+									"",
+									"if (responseData.token) {",
+									"    // Salvar o token na variável de ambiente/coleção",
+									"    pm.environment.set(\"auth_token\", responseData.token);",
+									"    pm.collectionVariables.set(\"auth_token\", responseData.token);",
+									"    console.log(\"Token salvo com sucesso: \" + responseData.token);",
+									"    ",
+									"    // Salvar dados do usuário para referência",
+									"    pm.environment.set(\"current_user_id\", responseData.user.id);",
+									"    pm.environment.set(\"current_user_email\", responseData.user.email);",
+									"} else {",
+									"    console.log(\"Token não encontrado na resposta!\");",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Novo Usuário\",\n    \"email\": \"usuario@example.com\",\n    \"password\": \"password123\",\n    \"password_confirmation\": \"password123\",\n    \"roles\": [\"USER\"]\n}"
+						},
+						"url": "{{base_url}}/register",
+						"description": "Registra um novo usuário e retorna um token de acesso. Automaticamente salva o token para uso em outras requisições. O campo 'roles' é opcional, e se não for fornecido, o usuário receberá o papel USER por padrão."
+					},
+					"response": []
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/logout",
+						"description": "Revoga o token de acesso do usuário autenticado."
+					},
+					"response": []
+				},
+				{
+					"name": "Usuário Atual",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/user",
+						"description": "Retorna informações do usuário autenticado."
+					},
+					"response": []
+				}
+			],
+			"description": "Rotas de autenticação e registro de usuários.\n\nEste conjunto de endpoints permite gerenciar o processo de autenticação de usuários no sistema MultiGateway. A API utiliza tokens JWT via Laravel Sanctum para autenticação, permitindo acesso seguro aos recursos protegidos.\n\nO sistema suporta quatro níveis de acesso (roles):\n- ADMIN: acesso completo a todas as funcionalidades\n- MANAGER: gerenciamento de produtos e usuários\n- FINANCE: gerenciamento de produtos e processamento de reembolsos\n- USER: acesso básico e consulta de informações\n\nNo registro, é possível atribuir múltiplas roles a um usuário através de um array com os nomes das roles (ex: [\"ADMIN\", \"FINANCE\"]). Se nenhuma role for especificada, a role USER será atribuída por padrão."
+		},
+		{
+			"name": "Pagamentos",
+			"item": [
+				{
+					"name": "Realizar Compra",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"products\": [\n        {\n            \"id\": 1,\n            \"quantity\": 2\n        },\n        {\n            \"id\": 2,\n            \"quantity\": 1\n        }\n    ],\n    \"client_name\": \"Cliente Teste\",\n    \"client_email\": \"cliente@example.com\",\n    \"card_number\": \"5569000000006063\",\n    \"card_cvv\": \"010\"\n}"
+						},
+						"url": "{{base_url}}/purchase",
+						"description": "Realiza uma compra processando o pagamento através dos gateways disponíveis. Enviando:\n- Lista de produtos e quantidades\n- Dados do cliente\n- Dados do cartão\n\nO sistema calculará o valor total e tentará processar o pagamento através dos gateways ativos, na ordem de prioridade definida."
+					},
+					"response": []
+				},
+				{
+					"name": "Listar Transações",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/transactions?page=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"transactions"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Número da página para paginação"
+								}
+							]
+						},
+						"description": "Lista todas as transações realizadas com paginação (20 itens por página)."
+					},
+					"response": []
+				},
+				{
+					"name": "Detalhar Transação",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/transactions/1",
+						"description": "Obtém os detalhes de uma transação específica, incluindo produtos, cliente e gateway utilizado."
+					},
+					"response": []
+				},
+				{
+					"name": "Reembolsar Transação",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/transactions/1/refund",
+						"description": "Realiza o reembolso de uma transação (requer role ADMIN ou FINANCE)."
+					},
+					"response": []
+				}
+			],
+			"description": "Rotas para processamento de pagamentos e reembolsos.\n\nO núcleo do sistema MultiGateway, estes endpoints gerenciam todo o ciclo de vida de transações financeiras. O sistema utiliza múltiplos gateways de pagamento em uma ordem de prioridade configurável, oferecendo fallback automático entre gateways caso um falhe.\n\nCada transação é armazenada com detalhes completos, incluindo:\n- Cliente que realizou a compra\n- Gateway utilizado para processar o pagamento\n- ID externo da transação no gateway\n- Status atual da transação (COMPLETED, REFUNDED, etc.)\n- Valor total em centavos\n- Últimos dígitos do cartão utilizado\n- Produtos comprados e suas quantidades\n\nO sistema também suporta operações de reembolso, que são processadas pelo mesmo gateway que realizou a transação original. Apenas usuários com roles ADMIN ou FINANCE podem realizar reembolsos."
+		},
+		{
+			"name": "Produtos",
+			"item": [
+				{
+					"name": "Listar Produtos",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/products?page=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"products"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Número da página para paginação"
+								}
+							]
+						},
+						"description": "Lista todos os produtos disponíveis com paginação (20 itens por página)."
+					},
+					"response": []
+				},
+				{
+					"name": "Criar Produto",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Novo Produto\",\n    \"amount\": 1990\n}"
+						},
+						"url": "{{base_url}}/products",
+						"description": "Cria um novo produto (requer role ADMIN, MANAGER ou FINANCE). O valor 'amount' deve ser fornecido em centavos (ex: 1990 = R$ 19,90)."
+					},
+					"response": []
+				},
+				{
+					"name": "Detalhar Produto",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/products/1",
+						"description": "Obtém os detalhes de um produto específico."
+					},
+					"response": []
+				},
+				{
+					"name": "Atualizar Produto",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Produto Atualizado\",\n    \"amount\": 2490\n}"
+						},
+						"url": "{{base_url}}/products/1",
+						"description": "Atualiza os dados de um produto (requer role ADMIN, MANAGER ou FINANCE)."
+					},
+					"response": []
+				},
+				{
+					"name": "Remover Produto",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/products/1",
+						"description": "Remove um produto (requer role ADMIN, MANAGER ou FINANCE). O produto será marcado como excluído (soft delete)."
+					},
+					"response": []
+				}
+			],
+			"description": "Gerenciamento de produtos disponíveis para venda.\n\nEstes endpoints permitem controlar o catálogo de produtos do sistema. Cada produto possui um nome e um valor em centavos (amount). Durante as compras, o sistema calcula o valor total baseado nos produtos selecionados e suas quantidades.\n\nCaracterísticas principais dos produtos:\n- Os valores são armazenados em centavos para evitar problemas com aritmética de ponto flutuante\n- O sistema utiliza soft deletes para produtos, permitindo manter histórico de transações mesmo após a remoção\n- Nas respostas da API, é fornecida uma versão formatada do valor (amount_formatted) para exibição\n\nA manipulação de produtos é restrita a usuários com roles ADMIN, MANAGER ou FINANCE, enquanto a visualização é permitida para todos os usuários autenticados."
+		},
+		{
+			"name": "Gateways",
+			"item": [
+				{
+					"name": "Listar Gateways",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/gateways?page=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"gateways"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Número da página para paginação"
+								}
+							]
+						},
+						"description": "Lista todos os gateways de pagamento, ordenados por prioridade."
+					},
+					"response": []
+				},
+				{
+					"name": "Criar Gateway",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Novo Gateway\",\n    \"type\": \"gateway3\",\n    \"is_active\": true,\n    \"priority\": 3,\n    \"credentials\": {\n        \"api_key\": \"chave_api_teste\",\n        \"api_secret\": \"segredo_api_teste\"\n    }\n}"
+						},
+						"url": "{{base_url}}/gateways",
+						"description": "Cria um novo gateway de pagamento (requer role ADMIN). O campo 'type' deve ser um dos tipos aceitos pelo sistema (gateway1, gateway2, etc)."
+					},
+					"response": []
+				},
+				{
+					"name": "Detalhar Gateway",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/gateways/1",
+						"description": "Obtém os detalhes de um gateway específico."
+					},
+					"response": []
+				},
+				{
+					"name": "Atualizar Gateway",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Gateway Atualizado\",\n    \"type\": \"gateway1\",\n    \"is_active\": true,\n    \"priority\": 1,\n    \"credentials\": {\n        \"api_key\": \"nova_chave_api\",\n        \"api_secret\": \"novo_segredo_api\"\n    }\n}"
+						},
+						"url": "{{base_url}}/gateways/1",
+						"description": "Atualiza os dados de um gateway (requer role ADMIN)."
+					},
+					"response": []
+				},
+				{
+					"name": "Remover Gateway",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/gateways/1",
+						"description": "Remove um gateway (requer role ADMIN). O gateway será marcado como excluído (soft delete)."
+					},
+					"response": []
+				},
+				{
+					"name": "Ativar/Desativar Gateway",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/gateways/1/toggle",
+						"description": "Alterna o status de ativação de um gateway (requer role ADMIN)."
+					},
+					"response": []
+				},
+				{
+					"name": "Alterar Prioridade Gateway",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"priority\": 2\n}"
+						},
+						"url": "{{base_url}}/gateways/1/priority",
+						"description": "Altera a prioridade de um gateway (requer role ADMIN). O sistema ajustará automaticamente as prioridades dos outros gateways para manter a consistência."
+					},
+					"response": []
+				},
+				{
+					"name": "Reordenar Prioridades",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"gateways\": [\n        {\n            \"id\": 2,\n            \"priority\": 1\n        },\n        {\n            \"id\": 1,\n            \"priority\": 2\n        }\n    ]\n}"
+						},
+						"url": "{{base_url}}/gateways/reorder",
+						"description": "Reordena as prioridades de múltiplos gateways de uma só vez (requer role ADMIN)."
+					},
+					"response": []
+				},
+				{
+					"name": "Normalizar Prioridades",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/gateways/normalize",
+						"description": "Normaliza as prioridades de todos os gateways, garantindo que sejam números consecutivos (1, 2, 3, etc) sem lacunas (requer role ADMIN)."
+					},
+					"response": []
+				}
+			],
+			"description": "Gerenciamento de gateways de pagamento.\n\nComponente central do sistema MultiGateway, estes endpoints controlam os provedores de pagamento disponíveis. O sistema suporta múltiplos gateways, cada um com sua própria implementação e configuração.\n\nCaracterísticas principais dos gateways:\n- Cada gateway possui um nome, tipo (gateway1, gateway2, etc.), status de ativação e prioridade\n- A prioridade determina a ordem de tentativa durante o processamento de pagamentos\n- Se um gateway falhar, o sistema automaticamente tenta o próximo na ordem de prioridade\n- Credenciais de cada gateway são armazenadas de forma segura em formato JSON\n\nO sistema inclui funcionalidades avançadas como reordenação e normalização de prioridades, além de ativação/desativação rápida de gateways específicos. A manipulação de gateways é restrita exclusivamente aos usuários com role ADMIN."
+		},
+		{
+			"name": "Clientes",
+			"item": [
+				{
+					"name": "Listar Clientes",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/clients?page=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"clients"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Número da página para paginação"
+								}
+							]
+						},
+						"description": "Lista todos os clientes com paginação (20 itens por página)."
+					},
+					"response": []
+				},
+				{
+					"name": "Detalhar Cliente",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/clients/1",
+						"description": "Obtém os detalhes de um cliente específico."
+					},
+					"response": []
+				},
+				{
+					"name": "Listar Transações do Cliente",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/clients/1/transactions",
+						"description": "Lista todas as transações de um cliente específico."
+					},
+					"response": []
+				}
+			],
+			"description": "Gerenciamento de clientes.\n\nEstes endpoints permitem visualizar e gerenciar as informações dos clientes que realizaram compras no sistema. Os clientes são criados automaticamente durante o processo de compra, se não existirem previamente.\n\nCaracterísticas principais dos clientes:\n- Cada cliente é identificado pelo seu e-mail único\n- Os clientes têm um histórico completo de transações associadas\n- O sistema permite visualizar todas as compras realizadas por um cliente específico\n\nApenas usuários autenticados podem visualizar informações de clientes, independente de sua role. Os clientes são entidades passivas no sistema, criadas como resultado de compras, e não há funcionalidades para criação manual, atualização ou remoção de clientes via API."
+		},
+		{
+			"name": "Usuários",
+			"item": [
+				{
+					"name": "Listar Usuários",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/users",
+						"description": "Lista todos os usuários (requer role ADMIN ou MANAGER)."
+					},
+					"response": []
+				},
+				{
+					"name": "Criar Usuário",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Novo Administrador\",\n    \"email\": \"admin2@example.com\",\n    \"password\": \"password123\",\n    \"password_confirmation\": \"password123\",\n    \"roles\": [\"ADMIN\"]\n}"
+						},
+						"url": "{{base_url}}/users",
+						"description": "Cria um novo usuário (requer role ADMIN ou MANAGER). Roles disponíveis: ADMIN, MANAGER, FINANCE, USER."
+					},
+					"response": []
+				},
+				{
+					"name": "Detalhar Usuário",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/users/1",
+						"description": "Obtém os detalhes de um usuário específico (requer role ADMIN ou MANAGER)."
+					},
+					"response": []
+				},
+				{
+					"name": "Atualizar Usuário",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Usuário Atualizado\",\n    \"email\": \"atualizado@example.com\",\n    \"roles\": [\"MANAGER\", \"FINANCE\"]\n}"
+						},
+						"url": "{{base_url}}/users/2",
+						"description": "Atualiza os dados de um usuário (requer role ADMIN ou MANAGER). Opcionalmente, você pode incluir 'password' para alterar a senha do usuário."
+					},
+					"response": []
+				},
+				{
+					"name": "Remover Usuário",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/users/3",
+						"description": "Remove um usuário (requer role ADMIN ou MANAGER). Não é possível remover o próprio usuário que está realizando a requisição."
+					},
+					"response": []
+				},
+				{
+					"name": "Atualizar Role de Usuário",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"role\": \"MANAGER\"\n}"
+						},
+						"url": "{{base_url}}/users/2/role",
+						"description": "Atualiza o papel (role) de um usuário (requer role ADMIN ou MANAGER). Este endpoint substitui todas as roles atuais do usuário pela nova role especificada."
+					},
+					"response": []
+				}
+			],
+			"description": "Gerenciamento de usuários do sistema.\n\nEstes endpoints permitem controlar os usuários que têm acesso ao sistema MultiGateway. O sistema implementa um modelo de autorização baseado em roles (papéis) que define as permissões de cada usuário.\n\nCaracterísticas principais dos usuários:\n- Cada usuário possui um nome, e-mail único e senha criptografada\n- Um usuário pode ter múltiplas roles, determinando suas permissões\n- As roles disponíveis são: ADMIN, MANAGER, FINANCE e USER\n- O sistema utiliza Laravel Sanctum para autenticação baseada em tokens\n- Os usuários podem ser marcados como inativos sem perder o histórico (soft delete)\n\nA gestão de usuários é uma funcionalidade administrativa, restrita a usuários com roles ADMIN ou MANAGER. Os próprios usuários podem atualizar alguns de seus dados através do endpoint de perfil (/user)."
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000/api",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": ""
+		}
+	]
+}
