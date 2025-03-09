@@ -9,6 +9,7 @@ use App\Services\Payment\PaymentService;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TransactionResource;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class TransactionController extends Controller
@@ -22,7 +23,20 @@ class TransactionController extends Controller
 
     public function index()
     {
-        $transactions = Transaction::with(['client', 'gateway', 'products'])->paginate(20);
+        $transactions = Transaction::with(['client', 'gateway', 'products'])
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
+
+        // Opcionalmente, cache o resultado paginado
+        $page = request()->input('page', 1);
+        $cacheKey = "transactions_page_{$page}";
+
+        $transactions = Cache::store('redis')->remember($cacheKey, 5 * 60, function () {
+            return Transaction::with(['client', 'gateway', 'products'])
+                ->orderBy('created_at', 'desc')
+                ->paginate(20);
+        });
+
         return TransactionResource::collection($transactions);
     }
 
@@ -51,23 +65,34 @@ class TransactionController extends Controller
             'card_cvv' => 'required|string|size:3|regex:/^[0-9]+$/',
         ]);
 
+        // Carregar todos os produtos de uma única vez
+        $productIds = array_column($validatedData['products'], 'id');
+        $productsCollection = Product::findMany($productIds);
+
         // Calcular o total
         $total = 0;
-        $products = [];
+        $productItems = [];
 
         foreach ($validatedData['products'] as $item) {
-            $product = Product::findOrFail($item['id']);
+            $product = $productsCollection->firstWhere('id', $item['id']);
             $total += $product->amount * $item['quantity'];
-            $products[] = [
+            $productItems[] = [
                 'id' => $product->id,
                 'quantity' => $item['quantity'],
             ];
         }
 
-        // Verificar ou criar cliente
-        $client = Client::firstOrCreate(
-            ['email' => $validatedData['client_email']],
-            ['name' => $validatedData['client_name']]
+        // Verificar ou criar cliente com cache
+        $clientEmail = $validatedData['client_email'];
+        $client = Cache::store('redis')->remember(
+            'client:email:' . md5($clientEmail),
+            3600,
+            function () use ($clientEmail, $validatedData) {
+                return Client::firstOrCreate(
+                    ['email' => $clientEmail],
+                    ['name' => $validatedData['client_name']]
+                );
+            }
         );
 
         // Processar pagamento
@@ -105,12 +130,15 @@ class TransactionController extends Controller
             'card_last_numbers' => substr($validatedData['card_number'], -4),
         ]);
 
-        // Adicionar produtos à transação
-        foreach ($products as $product) {
-            $transaction->products()->attach($product['id'], [
-                'quantity' => $product['quantity']
-            ]);
+        // Adicionar produtos à transação em um único comando attach
+        $attachData = [];
+        foreach ($productItems as $item) {
+            $attachData[$item['id']] = ['quantity' => $item['quantity']];
         }
+        $transaction->products()->attach($attachData);
+
+        // Carregar todas as relações necessárias em uma ÚNICA chamada
+        $transaction->load(['client', 'gateway', 'products']);
 
         // Calcular o tempo total de processamento
         $processingTime = round((microtime(true) - $startTime) * 1000, 2);
@@ -123,8 +151,7 @@ class TransactionController extends Controller
             $processingTime
         ]);
 
-        // Retornar resposta
-        $transaction->load(['client', 'products']);
+        // Retornar resposta (sem carregar novamente as relações)
         return response()->json([
             'message' => 'Compra realizada com sucesso',
             'transaction' => new TransactionResource($transaction),
@@ -147,10 +174,18 @@ class TransactionController extends Controller
         try {
             $refundResponse = $this->paymentService->refundPayment($transaction);
 
-            // Atualizar status da transação
-            $transaction = Transaction::findOrFail($transaction->id);
+            // Atualizar o status na mesma instância, sem buscar novamente
             $transaction->status = 'REFUNDED';
             $transaction->save();
+
+            // Garantir que todas as relações necessárias estão carregadas
+            if (
+                !$transaction->relationLoaded('client') ||
+                !$transaction->relationLoaded('gateway') ||
+                !$transaction->relationLoaded('products')
+            ) {
+                $transaction->load(['client', 'gateway', 'products']);
+            }
 
             // Calcular o tempo total de processamento
             $processingTime = round((microtime(true) - $startTime) * 1000, 2);

@@ -6,10 +6,12 @@ use App\Models\Gateway;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Cache;
 
 class PaymentService
 {
     protected $gateways = [];
+    protected $cachedGateways = null;
 
     /**
      * Construtor que facilita a injeção de mocks para testes
@@ -31,28 +33,31 @@ class PaymentService
     protected function loadGateways()
     {
         try {
-            // Carregar todos os gateways ativos em ordem de prioridade
-            $dbGateways = Gateway::where('is_active', true)
-                ->orderBy('priority')
-                ->get();
+            // Usar cache apenas para a lista de IDs e prioridades
+            $gatewaysList = Cache::store('redis')->remember('active_gateways_list', 30*60, function() {
+                return Gateway::where('is_active', true)
+                    ->orderBy('priority')
+                    ->pluck('id');
+            });
 
-            Log::info("Carregando gateways. Encontrados: " . $dbGateways->count());
+            // Carregar todos os gateways de uma vez com eager loading
+            if (count($gatewaysList) > 0) {
+                $this->cachedGateways = Gateway::whereIn('id', $gatewaysList)
+                    ->orderBy('priority')
+                    ->get();
 
-            foreach ($dbGateways as $gateway) {
-                try {
-                    // Utilizar o método getGatewayInstance para criar a instância
-                    $gatewayInstance = $this->getGatewayInstance($gateway);
-
-                    if ($gatewayInstance) {
-                        $this->gateways[] = [
-                            'id' => $gateway->id,
-                            'instance' => $gatewayInstance,
-                        ];
-
-                        Log::info("Gateway carregado com sucesso: " . $gateway->name);
+                foreach ($this->cachedGateways as $gateway) {
+                    try {
+                        $instance = $this->getGatewayInstance($gateway);
+                        if ($instance) {
+                            $this->gateways[] = [
+                                'id' => $gateway->id,
+                                'instance' => $instance
+                            ];
+                        }
+                    } catch (\Exception $e) {
+                        Log::error("Erro ao inicializar gateway {$gateway->name}: " . $e->getMessage());
                     }
-                } catch (\Exception $e) {
-                    Log::error("Erro ao carregar gateway {$gateway->name}: " . $e->getMessage());
                 }
             }
         } catch (\Exception $e) {
@@ -134,48 +139,27 @@ class PaymentService
                 $response = $gateway['instance']->pay($paymentData);
                 $gatewayProcessingTime = round((microtime(true) - $gatewayStartTime) * 1000, 2);
 
-                // Disparar evento de resposta do gateway
-                event('gateway.response', [
-                    $gateway['id'],
-                    'payment',
-                    'success',
-                    $response,
-                    $gatewayProcessingTime
-                ]);
-
                 // Verificar se o pagamento foi bem-sucedido
                 if (isset($response['id']) || isset($response['transactionId'])) {
+                    // Sucesso - Retornar com gateway já carregado pra evitar nova consulta
                     $totalProcessingTime = round((microtime(true) - $startTime) * 1000, 2);
 
-                    $result = [
+                    return [
                         'success' => true,
                         'gateway_id' => $gateway['id'],
                         'external_id' => $response['id'] ?? $response['transactionId'],
                         'response' => $response,
                         'processing_time_ms' => $totalProcessingTime
                     ];
-
-                    return $result;
                 }
 
                 $errors[] = "Gateway {$gateway['id']}: " . json_encode($response);
             } catch (\Exception $e) {
-                $gatewayProcessingTime = round((microtime(true) - $gatewayStartTime) * 1000, 2);
-
-                // Registrar erro no gateway
-                event('gateway.response', [
-                    $gateway['id'],
-                    'payment',
-                    'error',
-                    ['message' => $e->getMessage()],
-                    $gatewayProcessingTime
-                ]);
-
                 $errors[] = "Gateway {$gateway['id']}: " . $e->getMessage();
             }
         }
 
-        // Se chegou até aqui, todos os gateways falharam
+        // Se chegou aqui, todos os gateways falharam
         return [
             'success' => false,
             'errors' => $errors,
@@ -188,6 +172,11 @@ class PaymentService
      */
     public function refundPayment(Transaction $transaction)
     {
+        // Garantir que a transação já tem o gateway carregado
+        if (!$transaction->relationLoaded('gateway')) {
+            $transaction->load('gateway');
+        }
+
         $startTime = microtime(true);
         $gatewayId = $transaction->gateway_id;
 
