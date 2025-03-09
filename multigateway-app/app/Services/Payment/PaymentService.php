@@ -108,6 +108,7 @@ class PaymentService
      */
     public function processPayment(array $paymentData)
     {
+        $startTime = microtime(true);
         $errors = [];
 
         // Se não houver gateways disponíveis
@@ -121,20 +122,55 @@ class PaymentService
         // Tentar processar o pagamento em cada gateway, em ordem de prioridade
         foreach ($this->gateways as $gateway) {
             try {
+                $gatewayStartTime = microtime(true);
+
+                // Disparar evento de requisição para o gateway
+                event('gateway.request', [
+                    $gateway['id'],
+                    'payment',
+                    $paymentData
+                ]);
+
                 $response = $gateway['instance']->pay($paymentData);
+                $gatewayProcessingTime = round((microtime(true) - $gatewayStartTime) * 1000, 2);
+
+                // Disparar evento de resposta do gateway
+                event('gateway.response', [
+                    $gateway['id'],
+                    'payment',
+                    'success',
+                    $response,
+                    $gatewayProcessingTime
+                ]);
 
                 // Verificar se o pagamento foi bem-sucedido
                 if (isset($response['id']) || isset($response['transactionId'])) {
-                    return [
+                    $totalProcessingTime = round((microtime(true) - $startTime) * 1000, 2);
+
+                    $result = [
                         'success' => true,
                         'gateway_id' => $gateway['id'],
                         'external_id' => $response['id'] ?? $response['transactionId'],
-                        'response' => $response
+                        'response' => $response,
+                        'processing_time_ms' => $totalProcessingTime
                     ];
+
+                    return $result;
                 }
 
                 $errors[] = "Gateway {$gateway['id']}: " . json_encode($response);
             } catch (\Exception $e) {
+                $gatewayProcessingTime = round((microtime(true) - $gatewayStartTime) * 1000, 2);
+
+                // Registrar erro no gateway
+                event('gateway.response', [
+                    $gateway['id'],
+                    'payment',
+                    'error',
+                    ['message' => $e->getMessage()],
+                    $gatewayProcessingTime
+                ]);
+
                 $errors[] = "Gateway {$gateway['id']}: " . $e->getMessage();
             }
         }
@@ -142,7 +178,8 @@ class PaymentService
         // Se chegou até aqui, todos os gateways falharam
         return [
             'success' => false,
-            'errors' => $errors
+            'errors' => $errors,
+            'processing_time_ms' => round((microtime(true) - $startTime) * 1000, 2)
         ];
     }
 
@@ -151,6 +188,7 @@ class PaymentService
      */
     public function refundPayment(Transaction $transaction)
     {
+        $startTime = microtime(true);
         $gatewayId = $transaction->gateway_id;
 
         // Encontrar o gateway que processou a transação
@@ -182,11 +220,44 @@ class PaymentService
         }
 
         try {
-            Log::info("Iniciando reembolso da transação {$transaction->id} via gateway {$gatewayId}");
+            $gatewayStartTime = microtime(true);
+
+            // Disparar evento de requisição para o gateway
+            event('gateway.request', [
+                $gatewayId,
+                'refund',
+                ['transaction_id' => $transaction->external_id]
+            ]);
+
             $result = $gatewayInstance->refund($transaction->external_id);
-            Log::info("Reembolso da transação {$transaction->id} processado com sucesso");
+            $gatewayProcessingTime = round((microtime(true) - $gatewayStartTime) * 1000, 2);
+
+            // Disparar evento de resposta do gateway
+            event('gateway.response', [
+                $gatewayId,
+                'refund',
+                'success',
+                $result,
+                $gatewayProcessingTime
+            ]);
+
+            // Disparar evento de reembolso concluído
+            $totalProcessingTime = round((microtime(true) - $startTime) * 1000, 2);
+            event('transaction.refunded', [$transaction->id, $totalProcessingTime]);
+
             return $result;
         } catch (\Exception $e) {
+            $gatewayProcessingTime = round((microtime(true) - $gatewayStartTime) * 1000, 2);
+
+            // Registrar erro no gateway
+            event('gateway.response', [
+                $gatewayId,
+                'refund',
+                'error',
+                ['message' => $e->getMessage()],
+                $gatewayProcessingTime
+            ]);
+
             Log::error("Erro ao processar reembolso da transação {$transaction->id}: " . $e->getMessage());
             throw $e;
         }
