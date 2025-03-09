@@ -9,6 +9,7 @@ use App\Services\Payment\PaymentService;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TransactionResource;
+use Illuminate\Support\Facades\Log;
 
 class TransactionController extends Controller
 {
@@ -33,6 +34,8 @@ class TransactionController extends Controller
 
     public function purchase(Request $request)
     {
+        $startTime = microtime(true);
+
         $validatedData = $request->validate([
             'products' => 'required|array|min:1',
             'products.*.id' => 'required|exists:products,id',
@@ -77,6 +80,15 @@ class TransactionController extends Controller
         ]);
 
         if (!$paymentResponse['success']) {
+            // Log de falha no processamento
+            Log::channel('transactions')->warning('Payment processing failed', [
+                'client_id' => $client->id,
+                'amount' => $total,
+                'errors' => $paymentResponse['errors'],
+                'processing_time_ms' => $paymentResponse['processing_time_ms'] ?? null,
+                'timestamp' => now()->toIso8601String(),
+            ]);
+
             return response()->json([
                 'message' => 'Falha no processamento do pagamento',
                 'errors' => $paymentResponse['errors']
@@ -100,16 +112,30 @@ class TransactionController extends Controller
             ]);
         }
 
+        // Calcular o tempo total de processamento
+        $processingTime = round((microtime(true) - $startTime) * 1000, 2);
+
+        // Disparar evento de transação processada
+        event('transaction.processed', [
+            $transaction->id,
+            'COMPLETED',
+            $paymentResponse['gateway_id'],
+            $processingTime
+        ]);
+
         // Retornar resposta
         $transaction->load(['client', 'products']);
         return response()->json([
             'message' => 'Compra realizada com sucesso',
-            'transaction' => new TransactionResource($transaction)
+            'transaction' => new TransactionResource($transaction),
+            'processing_time_ms' => $processingTime
         ], 201);
     }
 
     public function refund(Transaction $transaction)
     {
+        $startTime = microtime(true);
+
         $this->authorize('process-refunds');
 
         if ($transaction->status === 'REFUNDED') {
@@ -120,16 +146,32 @@ class TransactionController extends Controller
 
         try {
             $refundResponse = $this->paymentService->refundPayment($transaction);
+
+            // Atualizar status da transação
             $transaction = Transaction::findOrFail($transaction->id);
             $transaction->status = 'REFUNDED';
             $transaction->save();
 
+            // Calcular o tempo total de processamento
+            $processingTime = round((microtime(true) - $startTime) * 1000, 2);
+
             return response()->json([
                 'message' => 'Reembolso realizado com sucesso',
                 'transaction' => new TransactionResource($transaction),
-                'response' => $refundResponse
+                'response' => $refundResponse,
+                'processing_time_ms' => $processingTime
             ]);
         } catch (\Exception $e) {
+            // Log de falha no reembolso
+            Log::channel('transactions')->error('Refund failed', [
+                'transaction_id' => $transaction->id,
+                'external_id' => $transaction->external_id,
+                'gateway_id' => $transaction->gateway_id,
+                'amount' => $transaction->amount,
+                'error' => $e->getMessage(),
+                'timestamp' => now()->toIso8601String(),
+            ]);
+
             return response()->json([
                 'message' => 'Falha ao processar o reembolso',
                 'error' => $e->getMessage()

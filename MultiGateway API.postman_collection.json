@@ -150,6 +150,102 @@
 			"description": "Rotas de autenticação e registro de usuários.\n\nEste conjunto de endpoints permite gerenciar o processo de autenticação de usuários no sistema MultiGateway. A API utiliza tokens JWT via Laravel Sanctum para autenticação, permitindo acesso seguro aos recursos protegidos.\n\nO sistema suporta quatro níveis de acesso (roles):\n- ADMIN: acesso completo a todas as funcionalidades\n- MANAGER: gerenciamento de produtos e usuários\n- FINANCE: gerenciamento de produtos e processamento de reembolsos\n- USER: acesso básico e consulta de informações\n\nNo registro, é possível atribuir múltiplas roles a um usuário através de um array com os nomes das roles (ex: [\"ADMIN\", \"FINANCE\"]). Se nenhuma role for especificada, a role USER será atribuída por padrão."
 		},
 		{
+			"name": "Health Checks",
+			"item": [
+				{
+					"name": "Health Check Básico",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "Verificação básica de saúde da aplicação. Rota pública que retorna informações como status, timestamp, ambiente e versão."
+					},
+					"response": []
+				},
+				{
+					"name": "Health Check Sistema",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": {
+								"token": "{{auth_token}}"
+							}
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/health/system",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health",
+								"system"
+							]
+						},
+						"description": "Verificação detalhada de saúde de todos os componentes do sistema incluindo banco de dados, Redis e gateways. Requer autenticação."
+					},
+					"response": []
+				},
+				{
+					"name": "Health Check Sistema de Pagamentos",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{auth_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/health/payment",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health",
+								"payment"
+							]
+						},
+						"description": "Verificação detalhada do sistema de pagamentos, incluindo status dos gateways, taxas de sucesso e métricas de transações. Requer autenticação e permissões de admin ou finanças."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints para monitoramento da saúde do sistema e seus componentes.\n\nEste conjunto de endpoints permite verificar o status operacional da aplicação e seus subsistemas, fornecendo métricas detalhadas sobre o funcionamento de componentes críticos como banco de dados, Redis, e gateways de pagamento.\n\nAs verificações incluem:\n- Status geral do sistema\n- Tempo de resposta de componentes\n- Métricas de transações\n- Status de comunicação com gateways\n- Estatísticas de clientes e produtos\n\nAlguns endpoints são públicos, enquanto outros requerem autenticação e permissões específicas."
+		},
+		{
 			"name": "Pagamentos",
 			"item": [
 				{
@@ -168,7 +264,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"products\": [\n        {\n            \"id\": 1,\n            \"quantity\": 2\n        },\n        {\n            \"id\": 2,\n            \"quantity\": 1\n        }\n    ],\n    \"client_name\": \"Cliente Teste\",\n    \"client_email\": \"cliente@example.com\",\n    \"card_number\": \"5569000000006063\",\n    \"card_cvv\": \"010\"\n}"
+							"raw": "{\n    \"products\": [\n        {\n            \"id\": 1,\n            \"quantity\": 2\n        },\n        {\n            \"id\": 2,\n            \"quantity\": 1\n        }\n    ],\n    \"client_name\": \"Cliente Teste\",\n    \"client_email\": \"cliente@gmail.com\",\n    \"card_number\": \"5569000000006063\",\n    \"card_cvv\": \"010\"\n}"
 						},
 						"url": "{{base_url}}/purchase",
 						"description": "Realiza uma compra processando o pagamento através dos gateways disponíveis. Enviando:\n- Lista de produtos e quantidades\n- Dados do cliente\n- Dados do cartão\n\nO sistema calculará o valor total e tentará processar o pagamento através dos gateways ativos, na ordem de prioridade definida."
@@ -770,7 +866,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"name\": \"Novo Administrador\",\n    \"email\": \"admin2@example.com\",\n    \"password\": \"password123\",\n    \"password_confirmation\": \"password123\",\n    \"roles\": [\"ADMIN\"]\n}"
+							"raw": "{\n    \"name\": \"Novo Administrador\",\n    \"email\": \"admin2@gmail.com\",\n    \"password\": \"password123\",\n    \"password_confirmation\": \"password123\",\n    \"roles\": [\"ADMIN\"]\n}"
 						},
 						"url": "{{base_url}}/users",
 						"description": "Cria um novo usuário (requer role ADMIN ou MANAGER). Roles disponíveis: ADMIN, MANAGER, FINANCE, USER."
@@ -820,7 +916,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"name\": \"Usuário Atualizado\",\n    \"email\": \"atualizado@example.com\",\n    \"roles\": [\"MANAGER\", \"FINANCE\"]\n}"
+							"raw": "{\n    \"name\": \"Usuário Atualizado\",\n    \"email\": \"atualizado@gmail.com\",\n    \"roles\": [\"MANAGER\", \"FINANCE\"]\n}"
 						},
 						"url": "{{base_url}}/users/2",
 						"description": "Atualiza os dados de um usuário (requer role ADMIN ou MANAGER). Opcionalmente, você pode incluir 'password' para alterar a senha do usuário."

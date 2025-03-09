@@ -1,10 +1,10 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\ClientController;
 use App\Http\Controllers\API\GatewayController;
+use App\Http\Controllers\API\HealthController;
 use App\Http\Controllers\API\ProductController;
 use App\Http\Controllers\API\TransactionController;
 use App\Http\Controllers\API\UserController;
@@ -19,10 +19,28 @@ use App\Http\Controllers\API\UserController;
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/purchase', [TransactionController::class, 'purchase']);
+//health checks
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'ok',
+        'timestamp' => now()->toIso8601String(),
+        'environment' => app()->environment(),
+        'version' => config('app.version', '1.0.0'),
+    ]);
+});
+
+
+Route::middleware('auth:sanctum')->prefix('health')->group(function () {
+    Route::get('/system', [HealthController::class, 'check'])
+        ->name('health.system');
+
+    Route::get('/payment', [HealthController::class, 'paymentSystem'])
+        ->name('health.paymentSystem')
+        ->middleware('can:is-admin,is-finance');
+});
 
 // Rotas protegidas
 Route::middleware('auth:sanctum')->group(function () {
-    // Usuário atual
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
