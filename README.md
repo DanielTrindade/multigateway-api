@@ -96,7 +96,7 @@ O sistema segue uma arquitetura de camadas com princípios SOLID:
 
 O sistema utiliza um banco de dados relacional MySQL com a seguinte estrutura:
 
-![Diagrama ER do Sistema de Pagamento Multi-Gateway](docs/images/er-diagram.png)
+![Diagrama ER do Sistema de Pagamento Multi-Gateway](docs/images/modelo_ER.png)
 
 ### Principais Entidades
 
